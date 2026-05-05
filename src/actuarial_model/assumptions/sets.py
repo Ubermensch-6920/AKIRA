@@ -39,6 +39,14 @@ from .enums import (
 )
 
 
+class LapseConfig(BaseModel):
+    """Lapse rate assumption configuration."""
+
+    base_annual_rate: float = 0.01
+    shock_rates: dict[int, float] = Field(default_factory=dict)
+    is_active: bool = True
+
+
 class StatCarvmConfig(BaseModel):
     """Pre-VM-22 CARVM configuration."""
 
@@ -48,6 +56,7 @@ class StatCarvmConfig(BaseModel):
     lapse_model: LapseModel = LapseModel.STATIC
     mortality_table: MortalityTable = MortalityTable.IAM_2012
     expense_fully_allocated: bool = True
+    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
 
 
 class StatVm22Config(BaseModel):
@@ -60,6 +69,7 @@ class StatVm22Config(BaseModel):
     lapse_model: LapseModel = LapseModel.DYNAMIC
     mortality_table: MortalityTable = MortalityTable.IAM_2012
     use_prescribed_margins: bool = True
+    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
 
 
 class LdtiConfig(BaseModel):
@@ -72,6 +82,7 @@ class LdtiConfig(BaseModel):
     use_contract_boundary: bool = True
     net_premium_ratio_cap: float = 1.0
     expense_fully_allocated: bool = True
+    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
 
 
 class Fas157Config(BaseModel):
@@ -83,6 +94,7 @@ class Fas157Config(BaseModel):
     non_performance_risk: NonPerfRiskAdj = NonPerfRiskAdj.OWN_CREDIT
     discount_basis: Fas157DiscountBasis = Fas157DiscountBasis.OIS
     mortality_loaded: bool = False
+    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
 
 
 class EbsConfig(BaseModel):
@@ -96,6 +108,7 @@ class EbsConfig(BaseModel):
     lapse_stress: EbsLapseStress = EbsLapseStress.WORSE_OF
     mortality_improvement: MortalityImprovement = MortalityImprovement.MP2021
     apply_reinsurance_haircut: bool = True
+    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
 
 
 class BelConfig(BaseModel):
@@ -108,6 +121,7 @@ class BelConfig(BaseModel):
     expense_inflation_rate: float = 0.03
     projection_timestep: ProjectionTimestep = ProjectionTimestep.MONTHLY
     curve_interpolation: CurveInterpolation = CurveInterpolation.LINEAR
+    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
 
 
 class ReinsuranceConfig(BaseModel):

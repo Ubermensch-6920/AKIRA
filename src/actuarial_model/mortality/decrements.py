@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from actuarial_model.lapse import LapseRateTable
+
 
 # =============================================================================
 # AKIRA mortality decrement engine
@@ -158,6 +160,7 @@ class AssumptionSelection(BaseModel):
     mortality_multiplier: float = Field(default=1.0, gt=0.0)
     g2_scale_multiplier: float = Field(default=1.0, ge=0.0)
     flat_improvement_rate: float = Field(default=0.01, ge=0.0, le=1.0)
+    lapse_rate_table: LapseRateTable | None = None
 
     # 2012 IAM Basic rates are presented as a 2012 table. This is used to
     # improve base mortality to the projection period.
@@ -416,7 +419,15 @@ class MortalityDecrementCalculator:
             )
 
             mortality_decrement = inforce_start * period_qx
+
+            policy_duration_years = int(np.ceil(years_from_issue))
             lapse_decrement = 0.0
+            if request.assumptions.lapse_rate_table is not None:
+                annual_lapse_rate = request.assumptions.lapse_rate_table.rate_at_duration(
+                    policy_duration_years
+                )
+                lapse_decrement = inforce_start * annual_lapse_rate
+
             maturity_decrement = 0.0
             inforce_end = max(
                 inforce_start
@@ -540,7 +551,14 @@ class MortalityDecrementCalculator:
                 both_to_all_dead + life1_only_to_all_dead + life2_only_to_all_dead
             )
 
+            policy_duration_years = int(np.ceil(years_from_issue))
             joint_lapse_decrement = 0.0
+            if request.assumptions.lapse_rate_table is not None:
+                annual_lapse_rate = request.assumptions.lapse_rate_table.rate_at_duration(
+                    policy_duration_years
+                )
+                joint_lapse_decrement = both_alive_start * annual_lapse_rate
+
             joint_maturity_decrement = 0.0
 
             both_alive = both_to_both_alive
