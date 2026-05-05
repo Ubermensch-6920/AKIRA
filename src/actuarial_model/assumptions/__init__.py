@@ -43,6 +43,7 @@ from .sets import (
     ReinsuranceConfig,
     StatCarvmConfig,
     StatVm22Config,
+    WithdrawalAssumptions,
 )
 
 __all__ = [
@@ -86,4 +87,5 @@ __all__ = [
     "Vm22Component",
     "Vm22ReinvestmentPath",
     "Vm22ScenarioSet",
+    "WithdrawalAssumptions",
 ]

@@ -10,6 +10,8 @@ from datetime import date
 
 from pydantic import BaseModel, Field
 
+from actuarial_model.withdrawal.rates import FreeWithdrawalConfig, MvaConfig, PartialWithdrawalTable
+
 from .enums import (
     CTELevel,
     CurveInterpolation,
@@ -47,6 +49,29 @@ class LapseConfig(BaseModel):
     is_active: bool = True
 
 
+class WithdrawalAssumptions(BaseModel):
+    """
+    Withdrawal and surrender assumption bundle for a single framework.
+
+    Covers the three withdrawal tiers on Athene MYGA products:
+      - Free withdrawal: annual no-charge allowance (fixed % of AV)
+      - Partial withdrawal: behavioural rate of excess withdrawals by duration
+      - MVA: Market Value Adjustment on excess withdrawal / surrender amounts
+
+    The surrender_schedule_id references a schedule in SurrenderChargeRepository
+    and is resolved at projection time by the relevant engine. Setting it to None
+    means no surrender charges apply (e.g., post-charge-period runoff).
+    """
+
+    free_withdrawal: FreeWithdrawalConfig = Field(default_factory=FreeWithdrawalConfig)
+    partial_withdrawal: PartialWithdrawalTable = Field(
+        default_factory=lambda: PartialWithdrawalTable(table_id="default")
+    )
+    mva: MvaConfig = Field(default_factory=MvaConfig)
+    surrender_schedule_id: str | None = None
+    is_active: bool = True
+
+
 class StatCarvmConfig(BaseModel):
     """Pre-VM-22 CARVM configuration."""
 
@@ -57,6 +82,7 @@ class StatCarvmConfig(BaseModel):
     mortality_table: MortalityTable = MortalityTable.IAM_2012
     expense_fully_allocated: bool = True
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
 
 
 class StatVm22Config(BaseModel):
@@ -70,6 +96,7 @@ class StatVm22Config(BaseModel):
     mortality_table: MortalityTable = MortalityTable.IAM_2012
     use_prescribed_margins: bool = True
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
 
 
 class LdtiConfig(BaseModel):
@@ -83,6 +110,7 @@ class LdtiConfig(BaseModel):
     net_premium_ratio_cap: float = 1.0
     expense_fully_allocated: bool = True
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
 
 
 class Fas157Config(BaseModel):
@@ -95,6 +123,7 @@ class Fas157Config(BaseModel):
     discount_basis: Fas157DiscountBasis = Fas157DiscountBasis.OIS
     mortality_loaded: bool = False
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
 
 
 class EbsConfig(BaseModel):
@@ -109,6 +138,7 @@ class EbsConfig(BaseModel):
     mortality_improvement: MortalityImprovement = MortalityImprovement.MP2021
     apply_reinsurance_haircut: bool = True
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
 
 
 class BelConfig(BaseModel):
@@ -122,6 +152,7 @@ class BelConfig(BaseModel):
     projection_timestep: ProjectionTimestep = ProjectionTimestep.MONTHLY
     curve_interpolation: CurveInterpolation = CurveInterpolation.LINEAR
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
 
 
 class ReinsuranceConfig(BaseModel):
