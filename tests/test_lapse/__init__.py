@@ -1,0 +1,1 @@
+"""Lapse assumption module tests."""

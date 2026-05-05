@@ -1,5 +1,6 @@
 from datetime import date
 
+from actuarial_model.lapse import LapseRateTable
 from actuarial_model.mortality.decrements import (
     AssumptionSelection,
     MortalityAssumptionRepository,
@@ -70,3 +71,95 @@ def test_joint_life_projection_state_conservation():
     assert final["joint_last_survivor_inforce_end"] <= 1000
     assert df["joint_lapse_decrement"].sum() == 0
     assert df["joint_maturity_decrement"].sum() == 0
+
+
+def test_single_life_with_uniform_lapse():
+    """Test single life projection with uniform lapse rate."""
+    lapse_table = LapseRateTable(
+        table_id="test_uniform",
+        base_annual_rate=0.01,
+    )
+    repository = MortalityAssumptionRepository.with_embedded_soa_iam_g2()
+    assumptions = AssumptionSelection(lapse_rate_table=lapse_table)
+
+    request = MortalityProjectionRequest(
+        run_id="TEST_LAPSE",
+        seriatim=SeriatimPolicyInput(
+            policy_id="P3",
+            issue_date=date(2021, 1, 1),
+            lives=[SeriatimLifeInput(life_id="L1", issue_age=60, sex=Sex.MALE)],
+            starting_policy_count=1000,
+        ),
+        assumptions=assumptions,
+        projection_periods=12,
+        frequency=ProjectionFrequency.MONTHLY,
+    )
+    output = MortalityDecrementCalculator(repository).calculate(request)
+    df = output.to_frame()
+
+    assert len(df) == 12
+    assert df["single_lapse_decrement"].sum() > 0
+    assert all(lapse > 0 for lapse in df["single_lapse_decrement"])
+    assert df["single_inforce_end"].iloc[-1] < df["single_inforce_start"].iloc[0]
+
+
+def test_single_life_with_shock_lapse():
+    """Test single life projection with lapse shock rates."""
+    lapse_table = LapseRateTable(
+        table_id="test_shocks",
+        base_annual_rate=0.01,
+        shock_rates={3: 0.20, 5: 0.40, 7: 0.50},
+    )
+    repository = MortalityAssumptionRepository.with_embedded_soa_iam_g2()
+    assumptions = AssumptionSelection(lapse_rate_table=lapse_table)
+
+    request = MortalityProjectionRequest(
+        run_id="TEST_LAPSE_SHOCK",
+        seriatim=SeriatimPolicyInput(
+            policy_id="P4",
+            issue_date=date(2021, 1, 1),
+            lives=[SeriatimLifeInput(life_id="L1", issue_age=60, sex=Sex.MALE)],
+            starting_policy_count=1000,
+        ),
+        assumptions=assumptions,
+        projection_periods=84,
+        frequency=ProjectionFrequency.MONTHLY,
+    )
+    output = MortalityDecrementCalculator(repository).calculate(request)
+    df = output.to_frame()
+
+    assert len(df) == 84
+    assert df["single_lapse_decrement"].sum() > 0
+    assert all(lapse >= 0 for lapse in df["single_lapse_decrement"])
+
+
+def test_joint_life_with_uniform_lapse():
+    """Test joint life projection with uniform lapse rate."""
+    lapse_table = LapseRateTable(
+        table_id="test_uniform",
+        base_annual_rate=0.01,
+    )
+    repository = MortalityAssumptionRepository.with_embedded_soa_iam_g2()
+    assumptions = AssumptionSelection(lapse_rate_table=lapse_table)
+
+    request = MortalityProjectionRequest(
+        run_id="TEST_JOINT_LAPSE",
+        seriatim=SeriatimPolicyInput(
+            policy_id="P5",
+            issue_date=date(2021, 1, 1),
+            lives=[
+                SeriatimLifeInput(life_id="L1", issue_age=60, sex=Sex.MALE),
+                SeriatimLifeInput(life_id="L2", issue_age=62, sex=Sex.FEMALE),
+            ],
+            starting_policy_count=1000,
+        ),
+        assumptions=assumptions,
+        projection_periods=24,
+        frequency=ProjectionFrequency.MONTHLY,
+    )
+    output = MortalityDecrementCalculator(repository).calculate(request)
+    df = output.to_frame()
+
+    assert len(df) == 24
+    assert df["joint_lapse_decrement"].sum() > 0
+    assert all(lapse > 0 for lapse in df["joint_lapse_decrement"])
