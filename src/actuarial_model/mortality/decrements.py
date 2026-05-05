@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 import re
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -13,6 +13,7 @@ import pandas as pd
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from actuarial_model.lapse import LapseRateTable
+from actuarial_model.withdrawal import WithdrawalCalculator
 
 
 # =============================================================================
@@ -161,6 +162,7 @@ class AssumptionSelection(BaseModel):
     g2_scale_multiplier: float = Field(default=1.0, ge=0.0)
     flat_improvement_rate: float = Field(default=0.01, ge=0.0, le=1.0)
     lapse_rate_table: LapseRateTable | None = None
+    withdrawal_assumptions: Any | None = None
 
     # 2012 IAM Basic rates are presented as a 2012 table. This is used to
     # improve base mortality to the projection period.
@@ -234,6 +236,7 @@ class MortalityProjectionRow(BaseModel):
     single_inforce_start: float | None = None
     single_mortality_decrement: float | None = None
     single_lapse_decrement: float = 0.0
+    single_withdrawal_decrement: float = 0.0
     single_maturity_decrement: float = 0.0
     single_inforce_end: float | None = None
 
@@ -247,6 +250,7 @@ class MortalityProjectionRow(BaseModel):
     joint_first_death_decrement: float | None = None
     joint_last_survivor_decrement: float | None = None
     joint_lapse_decrement: float = 0.0
+    joint_withdrawal_decrement: float = 0.0
     joint_maturity_decrement: float = 0.0
 
     both_alive_end: float | None = None
@@ -428,11 +432,22 @@ class MortalityDecrementCalculator:
                 )
                 lapse_decrement = inforce_start * annual_lapse_rate
 
+            withdrawal_decrement = 0.0
+            if (request.assumptions.withdrawal_assumptions is not None
+                    and request.assumptions.withdrawal_assumptions.is_active):
+                w_decrement = WithdrawalCalculator.partial_withdrawal_decrement(
+                    inforce_start,
+                    request.assumptions.withdrawal_assumptions.partial_withdrawal,
+                    policy_duration_years,
+                )
+                withdrawal_decrement = w_decrement
+
             maturity_decrement = 0.0
             inforce_end = max(
                 inforce_start
                 - mortality_decrement
                 - lapse_decrement
+                - withdrawal_decrement
                 - maturity_decrement,
                 0.0,
             )
@@ -457,6 +472,7 @@ class MortalityDecrementCalculator:
                     single_inforce_start=inforce_start,
                     single_mortality_decrement=mortality_decrement,
                     single_lapse_decrement=lapse_decrement,
+                    single_withdrawal_decrement=withdrawal_decrement,
                     single_maturity_decrement=maturity_decrement,
                     single_inforce_end=inforce_end,
                 )
@@ -559,6 +575,16 @@ class MortalityDecrementCalculator:
                 )
                 joint_lapse_decrement = both_alive_start * annual_lapse_rate
 
+            joint_withdrawal_decrement = 0.0
+            if (request.assumptions.withdrawal_assumptions is not None
+                    and request.assumptions.withdrawal_assumptions.is_active):
+                w_decrement = WithdrawalCalculator.partial_withdrawal_decrement(
+                    both_alive_start,
+                    request.assumptions.withdrawal_assumptions.partial_withdrawal,
+                    policy_duration_years,
+                )
+                joint_withdrawal_decrement = w_decrement
+
             joint_maturity_decrement = 0.0
 
             both_alive = both_to_both_alive
@@ -602,6 +628,7 @@ class MortalityDecrementCalculator:
                     joint_first_death_decrement=joint_first_death_decrement,
                     joint_last_survivor_decrement=joint_last_survivor_decrement,
                     joint_lapse_decrement=joint_lapse_decrement,
+                    joint_withdrawal_decrement=joint_withdrawal_decrement,
                     joint_maturity_decrement=joint_maturity_decrement,
                     both_alive_end=both_alive,
                     life1_only_alive_end=life1_only_alive,

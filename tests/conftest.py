@@ -12,7 +12,11 @@ from actuarial_model.assumptions.enums import (
     ReinsurerAuthStatus,
     RiskTransferMethod,
 )
-from actuarial_model.assumptions.sets import AssumptionSet, LapseConfig
+from actuarial_model.assumptions.sets import AssumptionSet, LapseConfig, WithdrawalAssumptions
+from actuarial_model.withdrawal import (
+    FreeWithdrawalConfig,
+    PartialWithdrawalTable,
+)
 from actuarial_model.models.asset import AssetRecord
 from actuarial_model.models.policy import MygaPolicyState
 from actuarial_model.models.reinsurance import ReinsuranceTreaty
@@ -20,10 +24,19 @@ from actuarial_model.models.reinsurance import ReinsuranceTreaty
 
 @pytest.fixture
 def sample_assumption_set() -> AssumptionSet:
-    """A default-configured assumption set with lapse assumptions."""
+    """A default-configured assumption set with lapse and withdrawal assumptions."""
     default_lapse_config = LapseConfig(
         base_annual_rate=0.01,
         shock_rates={3: 0.20, 5: 0.40, 7: 0.50},
+        is_active=True,
+    )
+
+    default_withdrawal_config = WithdrawalAssumptions(
+        free_withdrawal=FreeWithdrawalConfig(annual_free_pct=0.10),
+        partial_withdrawal=PartialWithdrawalTable(
+            table_id="default_withdrawal",
+            base_annual_rate=0.05,
+        ),
         is_active=True,
     )
 
@@ -35,12 +48,10 @@ def sample_assumption_set() -> AssumptionSet:
         created_date=date(2025, 1, 1),
     )
 
-    assumption_set.stat_carvm.lapse_config = default_lapse_config
-    assumption_set.stat_vm22.lapse_config = default_lapse_config
-    assumption_set.ldti.lapse_config = default_lapse_config
-    assumption_set.fas157.lapse_config = default_lapse_config
-    assumption_set.ebs.lapse_config = default_lapse_config
-    assumption_set.bel.lapse_config = default_lapse_config
+    for framework_name in ["stat_carvm", "stat_vm22", "ldti", "fas157", "ebs", "bel"]:
+        framework = getattr(assumption_set, framework_name)
+        framework.lapse_config = default_lapse_config
+        framework.withdrawal = default_withdrawal_config
 
     return assumption_set
 
