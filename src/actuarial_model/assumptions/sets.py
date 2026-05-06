@@ -72,6 +72,20 @@ class WithdrawalAssumptions(BaseModel):
     is_active: bool = True
 
 
+class FixedCreditingConfig(BaseModel):
+    """Fixed interest crediting strategy configuration."""
+
+    annual_rate: float = 0.03
+
+
+class CreditorConfig(BaseModel):
+    """Interest crediting assumption configuration."""
+
+    strategy: str = "fixed"
+    fixed: FixedCreditingConfig = Field(default_factory=FixedCreditingConfig)
+    is_active: bool = True
+
+
 class StatCarvmConfig(BaseModel):
     """Pre-VM-22 CARVM configuration."""
 
@@ -83,6 +97,7 @@ class StatCarvmConfig(BaseModel):
     expense_fully_allocated: bool = True
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
+    creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
 
 class StatVm22Config(BaseModel):
@@ -97,6 +112,7 @@ class StatVm22Config(BaseModel):
     use_prescribed_margins: bool = True
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
+    creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
 
 class LdtiConfig(BaseModel):
@@ -111,6 +127,7 @@ class LdtiConfig(BaseModel):
     expense_fully_allocated: bool = True
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
+    creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
 
 class Fas157Config(BaseModel):
@@ -124,6 +141,7 @@ class Fas157Config(BaseModel):
     mortality_loaded: bool = False
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
+    creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
 
 class EbsConfig(BaseModel):
@@ -139,6 +157,7 @@ class EbsConfig(BaseModel):
     apply_reinsurance_haircut: bool = True
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
+    creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
 
 class BelConfig(BaseModel):
@@ -153,6 +172,7 @@ class BelConfig(BaseModel):
     curve_interpolation: CurveInterpolation = CurveInterpolation.LINEAR
     lapse_config: LapseConfig = Field(default_factory=LapseConfig)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
+    creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
 
 class ReinsuranceConfig(BaseModel):
