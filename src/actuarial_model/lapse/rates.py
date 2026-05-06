@@ -11,6 +11,7 @@ class LapseRateTable(BaseModel):
     shock_rates: dict[int, float] = Field(default_factory=dict)
     description: str = ""
     source: str = "AKIRA"
+    is_active: bool = True
 
     @field_validator("base_annual_rate")
     @classmethod

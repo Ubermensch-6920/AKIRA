@@ -33,6 +33,8 @@ from .enums import (
     Vm22ReinvestmentPath,
     Vm22ScenarioSet,
 )
+from actuarial_model.lapse.rates import LapseRateTable
+
 from .sets import (
     AssumptionSet,
     BelConfig,
@@ -40,7 +42,6 @@ from .sets import (
     EbsConfig,
     Fas157Config,
     FixedCreditingConfig,
-    LapseConfig,
     LdtiConfig,
     ReinsuranceConfig,
     StatCarvmConfig,
@@ -67,8 +68,8 @@ __all__ = [
     "FixedCreditingConfig",
     "Framework",
     "GrossToNetMethod",
-    "LapseConfig",
     "LapseModel",
+    "LapseRateTable",
     "LdtiCohortGranularity",
     "LdtiConfig",
     "LdtiDiscountSource",

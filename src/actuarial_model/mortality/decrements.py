@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal
 import re
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -12,6 +11,8 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from actuarial_model.assumptions.sets import CreditorConfig, WithdrawalAssumptions
+from actuarial_model.crediting import CreditorCalculator
 from actuarial_model.lapse import LapseRateTable
 from actuarial_model.withdrawal import WithdrawalCalculator
 
@@ -162,8 +163,8 @@ class AssumptionSelection(BaseModel):
     g2_scale_multiplier: float = Field(default=1.0, ge=0.0)
     flat_improvement_rate: float = Field(default=0.01, ge=0.0, le=1.0)
     lapse_rate_table: LapseRateTable | None = None
-    withdrawal_assumptions: Any | None = None
-    creditor_config: Any | None = None
+    withdrawal_assumptions: WithdrawalAssumptions | None = None
+    creditor_config: CreditorConfig | None = None
 
     # 2012 IAM Basic rates are presented as a 2012 table. This is used to
     # improve base mortality to the projection period.
@@ -447,7 +448,6 @@ class MortalityDecrementCalculator:
 
             crediting_accrual = 0.0
             if request.assumptions.creditor_config is not None:
-                from actuarial_model.crediting import CreditorCalculator
                 crediting_accrual = CreditorCalculator.crediting_accrual(
                     inforce_start,
                     request.assumptions.creditor_config,
@@ -601,7 +601,6 @@ class MortalityDecrementCalculator:
 
             joint_crediting_accrual = 0.0
             if request.assumptions.creditor_config is not None:
-                from actuarial_model.crediting import CreditorCalculator
                 joint_crediting_accrual = CreditorCalculator.crediting_accrual(
                     both_alive_start,
                     request.assumptions.creditor_config,
@@ -610,7 +609,14 @@ class MortalityDecrementCalculator:
 
             joint_maturity_decrement = 0.0
 
-            both_alive = both_to_both_alive + joint_crediting_accrual
+            both_alive = max(
+                both_to_both_alive
+                - joint_lapse_decrement
+                - joint_withdrawal_decrement
+                - joint_maturity_decrement
+                + joint_crediting_accrual,
+                0.0,
+            )
             life1_only_alive = both_to_life1_only_alive + life1_only_to_life1_only
             life2_only_alive = both_to_life2_only_alive + life2_only_to_life2_only
             all_dead = (

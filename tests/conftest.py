@@ -16,9 +16,9 @@ from actuarial_model.assumptions.sets import (
     AssumptionSet,
     CreditorConfig,
     FixedCreditingConfig,
-    LapseConfig,
     WithdrawalAssumptions,
 )
+from actuarial_model.lapse import LapseRateTable
 from actuarial_model.withdrawal import (
     FreeWithdrawalConfig,
     PartialWithdrawalTable,
@@ -31,7 +31,8 @@ from actuarial_model.models.reinsurance import ReinsuranceTreaty
 @pytest.fixture
 def sample_assumption_set() -> AssumptionSet:
     """A default-configured assumption set with lapse, withdrawal, and crediting assumptions."""
-    default_lapse_config = LapseConfig(
+    default_lapse_config = LapseRateTable(
+        table_id="default_lapse",
         base_annual_rate=0.01,
         shock_rates={3: 0.20, 5: 0.40, 7: 0.50},
         is_active=True,
