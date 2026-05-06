@@ -1,11 +1,11 @@
 from datetime import date
 
+from actuarial_model.assumptions import CreditorConfig, FixedCreditingConfig, WithdrawalAssumptions
 from actuarial_model.lapse import LapseRateTable
 from actuarial_model.withdrawal import (
     FreeWithdrawalConfig,
     PartialWithdrawalTable,
 )
-from actuarial_model.assumptions import WithdrawalAssumptions
 from actuarial_model.mortality.decrements import (
     AssumptionSelection,
     MortalityAssumptionRepository,
@@ -301,3 +301,101 @@ def test_withdrawal_inactive():
     df = output.to_frame()
 
     assert df["single_withdrawal_decrement"].sum() == 0
+
+
+def test_single_life_with_crediting():
+    """Test single life projection with crediting accrual."""
+    creditor_config = CreditorConfig(fixed=FixedCreditingConfig(annual_rate=0.03))
+    repository = MortalityAssumptionRepository.with_embedded_soa_iam_g2()
+    assumptions = AssumptionSelection(creditor_config=creditor_config)
+
+    request = MortalityProjectionRequest(
+        run_id="TEST_CREDITING",
+        seriatim=SeriatimPolicyInput(
+            policy_id="P10",
+            issue_date=date(2021, 1, 1),
+            lives=[SeriatimLifeInput(life_id="L1", issue_age=60, sex=Sex.MALE)],
+            starting_policy_count=1000,
+        ),
+        assumptions=assumptions,
+        projection_periods=12,
+        frequency=ProjectionFrequency.MONTHLY,
+    )
+    output = MortalityDecrementCalculator(repository).calculate(request)
+    df = output.to_frame()
+
+    assert len(df) == 12
+    assert df["single_crediting_accrual"].sum() > 0
+    assert df["single_inforce_end"].iloc[-1] > df["single_inforce_start"].iloc[0]
+
+
+def test_joint_life_with_crediting():
+    """Test joint life projection with crediting accrual."""
+    creditor_config = CreditorConfig(fixed=FixedCreditingConfig(annual_rate=0.03))
+    repository = MortalityAssumptionRepository.with_embedded_soa_iam_g2()
+    assumptions = AssumptionSelection(creditor_config=creditor_config)
+
+    request = MortalityProjectionRequest(
+        run_id="TEST_JOINT_CREDITING",
+        seriatim=SeriatimPolicyInput(
+            policy_id="P11",
+            issue_date=date(2021, 1, 1),
+            lives=[
+                SeriatimLifeInput(life_id="L1", issue_age=60, sex=Sex.MALE),
+                SeriatimLifeInput(life_id="L2", issue_age=62, sex=Sex.FEMALE),
+            ],
+            starting_policy_count=1000,
+        ),
+        assumptions=assumptions,
+        projection_periods=24,
+        frequency=ProjectionFrequency.MONTHLY,
+    )
+    output = MortalityDecrementCalculator(repository).calculate(request)
+    df = output.to_frame()
+
+    assert len(df) == 24
+    assert df["joint_crediting_accrual"].sum() > 0
+
+
+def test_single_life_with_all_decrements_and_crediting():
+    """Test single life with all decrements and crediting combined."""
+    lapse_table = LapseRateTable(
+        table_id="test_combined",
+        base_annual_rate=0.01,
+    )
+    withdrawal_config = WithdrawalAssumptions(
+        free_withdrawal=FreeWithdrawalConfig(annual_free_pct=0.10),
+        partial_withdrawal=PartialWithdrawalTable(
+            table_id="test_combined",
+            base_annual_rate=0.05,
+        ),
+        is_active=True,
+    )
+    creditor_config = CreditorConfig(fixed=FixedCreditingConfig(annual_rate=0.03))
+    repository = MortalityAssumptionRepository.with_embedded_soa_iam_g2()
+    assumptions = AssumptionSelection(
+        lapse_rate_table=lapse_table,
+        withdrawal_assumptions=withdrawal_config,
+        creditor_config=creditor_config,
+    )
+
+    request = MortalityProjectionRequest(
+        run_id="TEST_ALL",
+        seriatim=SeriatimPolicyInput(
+            policy_id="P12",
+            issue_date=date(2021, 1, 1),
+            lives=[SeriatimLifeInput(life_id="L1", issue_age=60, sex=Sex.MALE)],
+            starting_policy_count=1000,
+        ),
+        assumptions=assumptions,
+        projection_periods=12,
+        frequency=ProjectionFrequency.MONTHLY,
+    )
+    output = MortalityDecrementCalculator(repository).calculate(request)
+    df = output.to_frame()
+
+    assert len(df) == 12
+    assert df["single_mortality_decrement"].sum() > 0
+    assert df["single_lapse_decrement"].sum() > 0
+    assert df["single_withdrawal_decrement"].sum() > 0
+    assert df["single_crediting_accrual"].sum() > 0

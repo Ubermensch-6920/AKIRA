@@ -163,6 +163,7 @@ class AssumptionSelection(BaseModel):
     flat_improvement_rate: float = Field(default=0.01, ge=0.0, le=1.0)
     lapse_rate_table: LapseRateTable | None = None
     withdrawal_assumptions: Any | None = None
+    creditor_config: Any | None = None
 
     # 2012 IAM Basic rates are presented as a 2012 table. This is used to
     # improve base mortality to the projection period.
@@ -238,6 +239,7 @@ class MortalityProjectionRow(BaseModel):
     single_lapse_decrement: float = 0.0
     single_withdrawal_decrement: float = 0.0
     single_maturity_decrement: float = 0.0
+    single_crediting_accrual: float = 0.0
     single_inforce_end: float | None = None
 
     both_alive_start: float | None = None
@@ -252,6 +254,7 @@ class MortalityProjectionRow(BaseModel):
     joint_lapse_decrement: float = 0.0
     joint_withdrawal_decrement: float = 0.0
     joint_maturity_decrement: float = 0.0
+    joint_crediting_accrual: float = 0.0
 
     both_alive_end: float | None = None
     life1_only_alive_end: float | None = None
@@ -442,13 +445,23 @@ class MortalityDecrementCalculator:
                 )
                 withdrawal_decrement = w_decrement
 
+            crediting_accrual = 0.0
+            if request.assumptions.creditor_config is not None:
+                from actuarial_model.crediting import CreditorCalculator
+                crediting_accrual = CreditorCalculator.crediting_accrual(
+                    inforce_start,
+                    request.assumptions.creditor_config,
+                    policy_year=int(years_from_issue) + 1,
+                )
+
             maturity_decrement = 0.0
             inforce_end = max(
                 inforce_start
                 - mortality_decrement
                 - lapse_decrement
                 - withdrawal_decrement
-                - maturity_decrement,
+                - maturity_decrement
+                + crediting_accrual,
                 0.0,
             )
 
@@ -474,6 +487,7 @@ class MortalityDecrementCalculator:
                     single_lapse_decrement=lapse_decrement,
                     single_withdrawal_decrement=withdrawal_decrement,
                     single_maturity_decrement=maturity_decrement,
+                    single_crediting_accrual=crediting_accrual,
                     single_inforce_end=inforce_end,
                 )
             )
@@ -585,9 +599,18 @@ class MortalityDecrementCalculator:
                 )
                 joint_withdrawal_decrement = w_decrement
 
+            joint_crediting_accrual = 0.0
+            if request.assumptions.creditor_config is not None:
+                from actuarial_model.crediting import CreditorCalculator
+                joint_crediting_accrual = CreditorCalculator.crediting_accrual(
+                    both_alive_start,
+                    request.assumptions.creditor_config,
+                    policy_year=int(years_from_issue) + 1,
+                )
+
             joint_maturity_decrement = 0.0
 
-            both_alive = both_to_both_alive
+            both_alive = both_to_both_alive + joint_crediting_accrual
             life1_only_alive = both_to_life1_only_alive + life1_only_to_life1_only
             life2_only_alive = both_to_life2_only_alive + life2_only_to_life2_only
             all_dead = (
@@ -630,6 +653,7 @@ class MortalityDecrementCalculator:
                     joint_lapse_decrement=joint_lapse_decrement,
                     joint_withdrawal_decrement=joint_withdrawal_decrement,
                     joint_maturity_decrement=joint_maturity_decrement,
+                    joint_crediting_accrual=joint_crediting_accrual,
                     both_alive_end=both_alive,
                     life1_only_alive_end=life1_only_alive,
                     life2_only_alive_end=life2_only_alive,
