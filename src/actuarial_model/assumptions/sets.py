@@ -10,6 +10,7 @@ from datetime import date
 
 from pydantic import BaseModel, Field
 
+from actuarial_model.lapse.rates import LapseRateTable
 from actuarial_model.withdrawal.rates import FreeWithdrawalConfig, MvaConfig, PartialWithdrawalTable
 
 from .enums import (
@@ -41,12 +42,8 @@ from .enums import (
 )
 
 
-class LapseConfig(BaseModel):
-    """Lapse rate assumption configuration."""
-
-    base_annual_rate: float = 0.01
-    shock_rates: dict[int, float] = Field(default_factory=dict)
-    is_active: bool = True
+def _default_lapse_rate_table() -> LapseRateTable:
+    return LapseRateTable(table_id="default", base_annual_rate=0.01)
 
 
 class WithdrawalAssumptions(BaseModel):
@@ -95,7 +92,7 @@ class StatCarvmConfig(BaseModel):
     lapse_model: LapseModel = LapseModel.STATIC
     mortality_table: MortalityTable = MortalityTable.IAM_2012
     expense_fully_allocated: bool = True
-    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    lapse_config: LapseRateTable = Field(default_factory=_default_lapse_rate_table)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
     creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
@@ -110,7 +107,7 @@ class StatVm22Config(BaseModel):
     lapse_model: LapseModel = LapseModel.DYNAMIC
     mortality_table: MortalityTable = MortalityTable.IAM_2012
     use_prescribed_margins: bool = True
-    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    lapse_config: LapseRateTable = Field(default_factory=_default_lapse_rate_table)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
     creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
@@ -125,7 +122,7 @@ class LdtiConfig(BaseModel):
     use_contract_boundary: bool = True
     net_premium_ratio_cap: float = 1.0
     expense_fully_allocated: bool = True
-    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    lapse_config: LapseRateTable = Field(default_factory=_default_lapse_rate_table)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
     creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
@@ -139,7 +136,7 @@ class Fas157Config(BaseModel):
     non_performance_risk: NonPerfRiskAdj = NonPerfRiskAdj.OWN_CREDIT
     discount_basis: Fas157DiscountBasis = Fas157DiscountBasis.OIS
     mortality_loaded: bool = False
-    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    lapse_config: LapseRateTable = Field(default_factory=_default_lapse_rate_table)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
     creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
@@ -155,7 +152,7 @@ class EbsConfig(BaseModel):
     lapse_stress: EbsLapseStress = EbsLapseStress.WORSE_OF
     mortality_improvement: MortalityImprovement = MortalityImprovement.MP2021
     apply_reinsurance_haircut: bool = True
-    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    lapse_config: LapseRateTable = Field(default_factory=_default_lapse_rate_table)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
     creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
@@ -170,7 +167,7 @@ class BelConfig(BaseModel):
     expense_inflation_rate: float = 0.03
     projection_timestep: ProjectionTimestep = ProjectionTimestep.MONTHLY
     curve_interpolation: CurveInterpolation = CurveInterpolation.LINEAR
-    lapse_config: LapseConfig = Field(default_factory=LapseConfig)
+    lapse_config: LapseRateTable = Field(default_factory=_default_lapse_rate_table)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
     creditor: CreditorConfig = Field(default_factory=CreditorConfig)
 
