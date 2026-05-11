@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from actuarial_model.assumptions.sets import CreditorConfig, WithdrawalAssumptions
 from actuarial_model.crediting import CreditorCalculator
-from actuarial_model.lapse import LapseRateTable
+from actuarial_model.lapse import LapseDecrementCalculator, LapseRateTable
 from actuarial_model.withdrawal import WithdrawalCalculator
 
 
@@ -430,11 +430,18 @@ class MortalityDecrementCalculator:
 
             policy_duration_years = int(np.ceil(years_from_issue))
             lapse_decrement = 0.0
-            if request.assumptions.lapse_rate_table is not None:
+            if (
+                request.assumptions.lapse_rate_table is not None
+                and request.assumptions.lapse_rate_table.is_active
+            ):
                 annual_lapse_rate = request.assumptions.lapse_rate_table.rate_at_duration(
                     policy_duration_years
                 )
-                lapse_decrement = inforce_start * annual_lapse_rate
+                period_lapse_rate = LapseDecrementCalculator.annual_to_periodic(
+                    annual_lapse_rate,
+                    request.frequency,
+                )
+                lapse_decrement = inforce_start * period_lapse_rate
 
             withdrawal_decrement = 0.0
             if (request.assumptions.withdrawal_assumptions is not None
@@ -583,11 +590,18 @@ class MortalityDecrementCalculator:
 
             policy_duration_years = int(np.ceil(years_from_issue))
             joint_lapse_decrement = 0.0
-            if request.assumptions.lapse_rate_table is not None:
+            if (
+                request.assumptions.lapse_rate_table is not None
+                and request.assumptions.lapse_rate_table.is_active
+            ):
                 annual_lapse_rate = request.assumptions.lapse_rate_table.rate_at_duration(
                     policy_duration_years
                 )
-                joint_lapse_decrement = both_alive_start * annual_lapse_rate
+                period_lapse_rate = LapseDecrementCalculator.annual_to_periodic(
+                    annual_lapse_rate,
+                    request.frequency,
+                )
+                joint_lapse_decrement = both_alive_start * period_lapse_rate
 
             joint_withdrawal_decrement = 0.0
             if (request.assumptions.withdrawal_assumptions is not None
