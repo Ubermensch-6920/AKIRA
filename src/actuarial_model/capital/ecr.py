@@ -5,17 +5,22 @@ Computes BSCR via the Standard Formula (or partial / full internal
 model) over EBS-basis assets and liabilities.
 """
 
+from datetime import date
+
 from pydantic import BaseModel
 
 from ..assumptions.sets import AssumptionSet
-from ..models.results import CapitalResult
+from ..models.asset import AssetRecord
+from ..models.results import CapitalResult, ReserveResult
 
 
 class EcrInput(BaseModel):
     """Inputs to the Bermuda ECR calculation."""
 
     assumption_set: AssumptionSet
-    # ASSUMPTION REQUIRED: full input contract pending product spec
+    reserve_results: list[ReserveResult] = []
+    assets: list[AssetRecord] = []
+    valuation_date: date | None = None
 
 
 class EcrOutput(BaseModel):

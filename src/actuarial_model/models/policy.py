@@ -40,7 +40,6 @@ class MygaPolicyState(PolicyStateBase):
     """
 
     product_type: Literal[ProductType.MYGA] = ProductType.MYGA
-    # ASSUMPTION REQUIRED: confirm full field list from product spec
     single_premium: float
     account_value: float
     guaranteed_rate: float

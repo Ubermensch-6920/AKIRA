@@ -15,7 +15,8 @@ class AssetLedgerInput(BaseModel):
     """Inputs to the asset ledger CRUD layer."""
 
     assets: list[AssetRecord]
-    # ASSUMPTION REQUIRED: ledger persistence target pending wiring
+    db_path: str = "akira.duckdb"
+    table_name: str = "asset_ledger"
 
 
 class AssetLedgerOutput(BaseModel):

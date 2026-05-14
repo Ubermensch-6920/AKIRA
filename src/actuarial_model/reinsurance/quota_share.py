@@ -8,6 +8,7 @@ adjustments.
 
 from pydantic import BaseModel
 
+from ..models.cash_flows import GrossCashFlows
 from ..models.reinsurance import ReinsuranceTreaty
 
 
@@ -15,14 +16,14 @@ class QuotaShareInput(BaseModel):
     """Inputs to the quota-share engine."""
 
     treaty: ReinsuranceTreaty
-    # ASSUMPTION REQUIRED: gross cash flow container pending product spec
+    gross_cash_flows: GrossCashFlows | None = None
 
 
 class QuotaShareOutput(BaseModel):
     """Output: ceded and retained cash flow streams."""
 
-    ceded_cash_flows: dict = {}
-    retained_cash_flows: dict = {}
+    ceded_cash_flows: GrossCashFlows | None = None
+    retained_cash_flows: GrossCashFlows | None = None
 
 
 def calculate(inputs: QuotaShareInput) -> QuotaShareOutput:

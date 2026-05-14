@@ -6,17 +6,22 @@ Aggregates C-1 (asset), C-2 (insurance), C-3 (interest-rate), and C-4
 Authorized Control Level (ACL) RBC ratio.
 """
 
+from datetime import date
+
 from pydantic import BaseModel
 
 from ..assumptions.sets import AssumptionSet
-from ..models.results import CapitalResult
+from ..models.asset import AssetRecord
+from ..models.results import CapitalResult, ReserveResult
 
 
 class RbcInput(BaseModel):
     """Inputs to the NAIC RBC calculation."""
 
     assumption_set: AssumptionSet
-    # ASSUMPTION REQUIRED: full input contract pending product spec
+    reserve_results: list[ReserveResult] = []
+    assets: list[AssetRecord] = []
+    valuation_date: date | None = None
 
 
 class RbcOutput(BaseModel):

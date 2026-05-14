@@ -13,19 +13,25 @@ from pydantic import BaseModel
 from ..assumptions.enums import CurveInterpolation, RiskFreeCurve
 
 
+class CurvePoint(BaseModel):
+    """A single point on a yield curve."""
+
+    tenor_years: float
+    rate: float  # decimal, e.g. 0.04 == 4 %
+
+
 class DiscountInput(BaseModel):
     """Inputs to discount-factor construction."""
 
     valuation_date: date
     curve: RiskFreeCurve
     interpolation: CurveInterpolation
-    # ASSUMPTION REQUIRED: raw curve points / source contract
+    curve_points: list[CurvePoint] = []
 
 
 class DiscountOutput(BaseModel):
     """Discount factor curve as paired tenor / DF arrays."""
 
-    # ASSUMPTION REQUIRED: numpy array container pending wiring
     tenors_years: list[float] = []
     discount_factors: list[float] = []
 
