@@ -5,9 +5,13 @@ Computes Technical Provisions (Standard or Scenario-Based Approach),
 risk margin, and BSCR-style stresses (lapse, mortality improvement).
 """
 
+from datetime import date
+
 from pydantic import BaseModel
 
 from ..assumptions.sets import AssumptionSet
+from ..models.cash_flows import GrossCashFlows
+from ..models.policy import MygaPolicyState
 from ..models.results import ReserveResult
 
 
@@ -15,7 +19,9 @@ class EbsInput(BaseModel):
     """Inputs to the EBS calculation."""
 
     assumption_set: AssumptionSet
-    # ASSUMPTION REQUIRED: full input contract pending product spec
+    gross_cash_flows: GrossCashFlows | None = None
+    policies: list[MygaPolicyState] = []
+    valuation_date: date | None = None
 
 
 class EbsOutput(BaseModel):

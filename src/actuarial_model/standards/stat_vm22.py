@@ -6,9 +6,13 @@ under VM-22, returning the configured component (DR-only or max(DR, SR))
 at the configured CTE level.
 """
 
+from datetime import date
+
 from pydantic import BaseModel
 
 from ..assumptions.sets import AssumptionSet
+from ..models.cash_flows import GrossCashFlows
+from ..models.policy import MygaPolicyState
 from ..models.results import ReserveResult
 
 
@@ -16,7 +20,9 @@ class StatVm22Input(BaseModel):
     """Inputs to the STAT (VM-22) reserve calculation."""
 
     assumption_set: AssumptionSet
-    # ASSUMPTION REQUIRED: full input contract pending product spec
+    gross_cash_flows: GrossCashFlows | None = None
+    policies: list[MygaPolicyState] = []
+    valuation_date: date | None = None
 
 
 class StatVm22Output(BaseModel):

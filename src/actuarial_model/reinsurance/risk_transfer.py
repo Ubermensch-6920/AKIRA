@@ -9,7 +9,9 @@ qualifies for reinsurance accounting (vs. deposit accounting).
 from pydantic import BaseModel
 
 from ..assumptions.sets import AssumptionSet
+from ..models.cash_flows import GrossCashFlows
 from ..models.reinsurance import ReinsuranceTreaty
+from ..models.scenarios import ScenarioPath
 
 
 class RiskTransferInput(BaseModel):
@@ -17,7 +19,8 @@ class RiskTransferInput(BaseModel):
 
     assumption_set: AssumptionSet
     treaty: ReinsuranceTreaty
-    # ASSUMPTION REQUIRED: stochastic scenario inputs pending product spec
+    scenario_paths: list[ScenarioPath] = []
+    gross_cash_flows: GrossCashFlows | None = None
 
 
 class RiskTransferOutput(BaseModel):

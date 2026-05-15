@@ -6,9 +6,13 @@ product projection engine based on :attr:`PolicyStateBase.product_type`,
 then concatenates the per-product cash flow outputs.
 """
 
+from datetime import date
+
 from pydantic import BaseModel
 
 from ..assumptions.sets import AssumptionSet
+from ..models.asset import AssetRecord
+from ..models.cash_flows import GrossCashFlows
 from ..models.policy import PolicyStateBase
 
 
@@ -17,14 +21,15 @@ class SeriatimInput(BaseModel):
 
     assumption_set: AssumptionSet
     policies: list[PolicyStateBase]
-    # ASSUMPTION REQUIRED: cash flow grid + asset universe wiring
+    valuation_date: date | None = None
+    run_id: str = ""
+    assets: list[AssetRecord] = []
 
 
 class SeriatimOutput(BaseModel):
     """Outputs of the seriatim dispatcher."""
 
-    # ASSUMPTION REQUIRED: typed cash-flow container pending product spec
-    cash_flows: dict = {}
+    cash_flows: GrossCashFlows | None = None
 
 
 def calculate(inputs: SeriatimInput) -> SeriatimOutput:

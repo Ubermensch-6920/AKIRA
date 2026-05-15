@@ -10,6 +10,7 @@ downstream framework reserving.
 from pydantic import BaseModel
 
 from ..assumptions.sets import AssumptionSet
+from ..models.cash_flows import GrossCashFlows
 from ..models.reinsurance import ReinsuranceTreaty
 
 
@@ -18,15 +19,14 @@ class ReinsuranceApplicationInput(BaseModel):
 
     assumption_set: AssumptionSet
     treaties: list[ReinsuranceTreaty]
-    # ASSUMPTION REQUIRED: typed gross-cash-flow container pending product spec
+    gross_cash_flows: GrossCashFlows | None = None
 
 
 class ReinsuranceApplicationOutput(BaseModel):
     """Output: ceded + net cash flow streams keyed by policy / treaty."""
 
-    # ASSUMPTION REQUIRED: typed cash-flow containers pending product spec
-    ceded_cash_flows: dict = {}
-    net_cash_flows: dict = {}
+    ceded_cash_flows: GrossCashFlows | None = None
+    net_cash_flows: GrossCashFlows | None = None
 
 
 def calculate(inputs: ReinsuranceApplicationInput) -> ReinsuranceApplicationOutput:

@@ -7,9 +7,12 @@ end-of-guarantee disposition. Outputs the gross cash-flow streams that
 feed BEL discounting and every framework reserve module.
 """
 
+from datetime import date
+
 from pydantic import BaseModel
 
 from ...assumptions.sets import AssumptionSet
+from ...models.cash_flows import GrossCashFlows
 from ...models.policy import MygaPolicyState
 
 
@@ -18,14 +21,14 @@ class MygaProjectionInput(BaseModel):
 
     assumption_set: AssumptionSet
     policies: list[MygaPolicyState]
-    # ASSUMPTION REQUIRED: cash flow grid contract pending product spec
+    valuation_date: date | None = None
+    projection_horizon_years: int = 30
 
 
 class MygaProjectionOutput(BaseModel):
     """MYGA gross per-policy cash flow streams."""
 
-    # ASSUMPTION REQUIRED: typed cash-flow container pending product spec
-    cash_flows: dict = {}
+    cash_flows: GrossCashFlows | None = None
 
 
 def calculate(inputs: MygaProjectionInput) -> MygaProjectionOutput:

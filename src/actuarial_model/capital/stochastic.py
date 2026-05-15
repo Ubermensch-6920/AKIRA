@@ -6,17 +6,23 @@ Generally aligns with VM-22 SR scenario sets but supports company-
 defined scenarios as well.
 """
 
+from datetime import date
+
 from pydantic import BaseModel
 
 from ..assumptions.sets import AssumptionSet
+from ..models.policy import MygaPolicyState
 from ..models.results import CapitalResult
+from ..models.scenarios import ScenarioPath
 
 
 class StochasticCapitalInput(BaseModel):
     """Inputs to the stochastic capital calculation."""
 
     assumption_set: AssumptionSet
-    # ASSUMPTION REQUIRED: full input contract pending product spec
+    scenario_paths: list[ScenarioPath] = []
+    policies: list[MygaPolicyState] = []
+    valuation_date: date | None = None
 
 
 class StochasticCapitalOutput(BaseModel):

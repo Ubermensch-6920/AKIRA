@@ -6,9 +6,13 @@ configured Actuarial Guideline (AG33 / AG35) with cash-flow-testing
 overlay scenarios (Reg 126 or company).
 """
 
+from datetime import date
+
 from pydantic import BaseModel
 
 from ..assumptions.sets import AssumptionSet
+from ..models.cash_flows import GrossCashFlows
+from ..models.policy import MygaPolicyState
 from ..models.results import ReserveResult
 
 
@@ -16,7 +20,9 @@ class StatCarvmInput(BaseModel):
     """Inputs to the STAT (CARVM) reserve calculation."""
 
     assumption_set: AssumptionSet
-    # ASSUMPTION REQUIRED: full input contract pending product spec
+    gross_cash_flows: GrossCashFlows | None = None
+    policies: list[MygaPolicyState] = []
+    valuation_date: date | None = None
 
 
 class StatCarvmOutput(BaseModel):
