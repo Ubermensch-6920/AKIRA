@@ -31,10 +31,18 @@ def test_discount_stub(sample_assumption_set: AssumptionSet) -> None:
         )
 
 
+def test_myga_calculate_returns_output(sample_assumption_set: AssumptionSet) -> None:
+    """MYGA engine is implemented — calculate() should succeed with an empty policy list."""
+    output = myga.calculate(
+        myga.MygaProjectionInput(assumption_set=sample_assumption_set, policies=[])
+    )
+    assert output.cash_flows is not None
+    assert output.cash_flows.policies == []
+
+
 @pytest.mark.parametrize(
     "module, input_cls",
     [
-        (myga, myga.MygaProjectionInput),
         (fia, fia.FiaProjectionInput),
         (spia, spia.SpiaProjectionInput),
         (va, va.VaProjectionInput),
