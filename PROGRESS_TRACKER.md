@@ -1,6 +1,6 @@
 # AKIRA — Development Progress Tracker
 
-*Last updated: 2026-06-05*
+*Last updated: 2026-06-11*
 
 ---
 
@@ -16,15 +16,15 @@
 | **Assumption config** | `assumptions/sets.py` + `enums.py` + `validators.py` | ✅ Complete | Smoke | Full config framework; 20+ enums; cross-field validators |
 | **Pydantic models** | `models/` (5 files) | ✅ Complete | Smoke | Policy, asset, reinsurance, results, cash flow structures |
 | **FastAPI skeleton** | `api/main.py` + `api/routes/` | 🟡 Skeleton | 1 (health) | CORS + health check working; all route bodies are stubs |
-| **MYGA projection** | `core/projections/myga.py` | 🔴 Stub | — | **Critical path blocker — everything downstream depends on this** |
-| **Seriatim dispatcher** | `core/seriatim.py` | 🔴 Stub | — | Routes a policy input to a product engine |
+| **MYGA projection** | `core/projections/myga.py` | ✅ Complete | 12 | Two-layer engine: decrements + AV roll-forward; ROAV/ROP, surrender charges, maturity |
+| **Seriatim dispatcher** | `core/seriatim.py` | ✅ Complete | 3 | Routes MYGA policies; Phase 2/3 products raise NotImplementedError |
 | **Aggregation** | `core/aggregation.py` | 🔴 Stub | — | Cohort → Segment → BalanceSheet rollup |
-| **Discount / yield curve** | `core/discount.py` | 🔴 Stub | — | Discount factor vectors; required by BEL + all frameworks |
+| **Discount / yield curve** | `core/discount.py` | ✅ Complete | 17 | Linear/cubic-spline zero curve, flat extrapolation, DF helpers |
 | **Quota-share reinsurance** | `reinsurance/quota_share.py` | 🔴 Stub | — | Phase 1 reinsurance type; treaty model exists |
 | **Reinsurance application** | `reinsurance/application.py` | 🔴 Stub | — | Routes policy-treaty pairs to reinsurance engines |
 | **Asset ledger** | `assets/ledger.py` | 🔴 Stub | — | Asset transaction journal |
 | **Asset valuation** | `assets/valuation.py` | 🔴 Stub | — | Multi-framework asset views (BV, FV, statutory) |
-| **BEL** | `standards/bel.py` | 🔴 Stub | — | Best Estimate Liability; cross-cuts all frameworks |
+| **BEL** | `standards/bel.py` | ✅ Complete | 7 | Discounts liability outflows at risk-free curve; end-to-end pipeline tested |
 | **STAT CARVM** | `standards/stat_carvm.py` | 🔴 Stub | — | Pre-VM-22 statutory reserve |
 | **VM-22** | `standards/stat_vm22.py` | 🔴 Stub | — | NAIC VM-22 deterministic + stochastic reserve |
 | **LDTI** | `standards/ldti.py` | 🔴 Stub | — | ASC 944 LFPB + DAC |
@@ -101,68 +101,62 @@
 
 ## Priority Queue — Next Work Items
 
-### Priority 1 — Unblock the Projection Engine
+### ✅ Done (2026-06-11) — Base MYGA pipeline
 
-**1. `core/projections/myga.py` — MYGA Cash Flow Projection Loop**
-- The single most critical blocker. All decrements exist; this wires them into a time-stepped accumulation of account value, interest, cash flows, and benefits.
-- Key inputs: `MygaPolicyState`, `AssumptionSet`
-- Key outputs: `GrossCashFlows` (populated `pd.DataFrame` indexed by projection date)
-- Pattern to follow: `mortality/runner.py` for the projection loop skeleton
+- ~~`core/projections/myga.py`~~ — Two-layer engine (decrements + AV roll-forward). 12 tests.
+- ~~`core/discount.py`~~ — Zero curve with linear/cubic-spline interpolation, DF helpers. 17 tests.
+- ~~`core/seriatim.py`~~ — MYGA routing live; Phase 2/3 products raise. 3 tests.
+- ~~`standards/bel.py`~~ — Liability outflow discounting → ReserveResult. 7 tests incl. end-to-end.
 
-**2. `core/discount.py` — Yield Curve & Discount Factors**
-- Build a discount factor vector from a flat rate or a curve (term-structure).
-- Required by BEL and every reserve framework.
-- Simple first pass: flat-rate spot curve → discount factors as `np.ndarray`
+Working pipeline: `MygaPolicyState` → `seriatim.calculate` → `GrossCashFlows` → `bel.calculate` → `ReserveResult`.
 
 ---
 
-### Priority 2 — Orchestration
+### Priority 1 — Aggregation & First Statutory Reserve
 
-**3. `core/seriatim.py` — Policy Dispatcher**
-- Route a `SeriatimPolicyInput` to the correct product engine, return `GrossCashFlows`.
-- Phase 1: only MYGA branch needs to be live.
-
-**4. `core/aggregation.py` — Rollup**
+**1. `core/aggregation.py` — Rollup**
 - Aggregate policy-level results into cohort → segment → legal entity tables.
 - Needed before API routes can return anything meaningful.
 
----
-
-### Priority 3 — First Reserve Frameworks
-
-**5. `standards/bel.py` — Best Estimate Liability**
-- Discount `GrossCashFlows` using the yield curve to produce a scalar BEL per policy.
-- Cross-cuts all six frameworks; implement once, reuse everywhere.
-
-**6. `standards/stat_carvm.py` — Pre-VM-22 CARVM**
+**2. `standards/stat_carvm.py` — Pre-VM-22 CARVM**
 - Simplest statutory reserve; good validation baseline against hand-calculated numbers.
 - Uses BEL + lapse-supported reserve adjustment.
 
-**7. `standards/stat_vm22.py` — VM-22 Reserve**
+**3. `standards/stat_vm22.py` — VM-22 Reserve**
 - Deterministic Reserve (DR) + Stochastic Reserve (SR).
 - Required for NAIC statutory compliance target.
 
 ---
 
-### Priority 4 — Phase 1 Reinsurance
+### Priority 2 — Phase 1 Reinsurance
 
-**8. `reinsurance/quota_share.py`**
+**4. `reinsurance/quota_share.py`**
 - Implement gross→ceded→net split. Treaty model (`ReinsuranceTreaty`) and `GrossCashFlows` structure both exist.
+- Then wire ceded BEL into `standards/bel.py` (currently ceded = 0).
 
-**9. `reinsurance/application.py`**
+**5. `reinsurance/application.py`**
 - Route each policy-treaty pair to its reinsurance engine; aggregate ceded/net results.
 
 ---
 
-### Priority 5 — Capital & REST Exposure
+### Priority 3 — Capital & REST Exposure
 
-**10. `capital/rbc.py` — NAIC RBC**
+**6. `capital/rbc.py` — NAIC RBC**
 - C-1 (asset risk), C-2 (insurance risk), C-3 (interest rate risk), C-4 (business risk).
 - C-2 and C-3 depend on MYGA projection output.
 
-**11. `api/routes/runs.py` + `api/routes/results.py`**
+**7. `api/routes/runs.py` + `api/routes/results.py`**
 - Wire `/runs` POST → seriatim → aggregation pipeline.
 - Wire `/results` GET → DuckDB query of persisted run output.
+
+---
+
+### Known Phase 1 simplifications (revisit before production)
+
+- MVA is hard-zero in the MYGA engine (no interest-rate path yet).
+- Projection basis is pinned to `stat_carvm` config; per-framework bases pending.
+- Surrender schedules resolve from the embedded Athene repository; unknown IDs default to no charges.
+- Decrement engine's `withdrawal_decrement` / `crediting_accrual` paths are bypassed by the MYGA engine (withdrawal modeled in AV layer; counts unaffected) — consider cleaning up the engine itself.
 
 ---
 
