@@ -92,6 +92,9 @@ class StatCarvmConfig(BaseModel):
     lapse_model: LapseModel = LapseModel.STATIC
     mortality_table: MortalityTable = MortalityTable.IAM_2012
     expense_fully_allocated: bool = True
+    # ASSUMPTION REQUIRED: statutory valuation interest rate — should come from
+    # the SVL dynamic valuation rate for the issue year and guarantee duration.
+    valuation_interest_rate: float = 0.04
     lapse_config: LapseRateTable = Field(default_factory=_default_lapse_rate_table)
     withdrawal: WithdrawalAssumptions = Field(default_factory=WithdrawalAssumptions)
     creditor: CreditorConfig = Field(default_factory=CreditorConfig)
