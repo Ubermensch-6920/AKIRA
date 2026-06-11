@@ -8,10 +8,13 @@ feed BEL discounting and every framework reserve module.
 
 Design — two layers:
   Layer 1 (existing): MortalityDecrementCalculator produces per-period
-    inforce counts and decrement amounts (mortality, lapse, withdrawal).
+    inforce counts and decrement amounts (mortality, lapse).
   Layer 2 (this module): AV roll-forward converts those counts into dollars
     using the policy's guaranteed_rate, surrender charge schedule, and
-    death-benefit basis.
+    death-benefit basis. Partial withdrawals live entirely in this layer:
+    they reduce account value, not policy count, so they are deliberately
+    NOT passed to the decrement engine (which models withdrawal_decrement
+    as a termination).
 """
 
 from __future__ import annotations
@@ -20,8 +23,9 @@ from datetime import date
 
 from pydantic import BaseModel
 
-from ...assumptions.sets import AssumptionSet
+from ...assumptions.sets import AssumptionSet, WithdrawalAssumptions
 from ...crediting.calculator import CreditorCalculator
+from ...lapse.calculator import LapseDecrementCalculator
 from ...models.cash_flows import GrossCashFlows, MygaCashFlowRecord, PolicyCashFlows
 from ...models.policy import MygaPolicyState
 from ...mortality.decrements import (
@@ -98,9 +102,11 @@ class MygaProjectionEngine:
         )
         mort_output = self._mortality_calc.calculate(mort_request)
 
+        proj = assumption_set.stat_carvm
+        withdrawal_cfg = proj.withdrawal if proj.withdrawal.is_active else None
         surrender_schedule = _resolve_surrender_schedule(policy)
         records = self._project_cash_flows(
-            policy, mort_output.records, frequency, surrender_schedule
+            policy, mort_output.records, frequency, surrender_schedule, withdrawal_cfg
         )
         return PolicyCashFlows(policy_id=policy.policy_id, records=records)
 
@@ -137,9 +143,10 @@ class MygaProjectionEngine:
                 lapse_rate_table=(
                     proj.lapse_config if proj.lapse_config.is_active else None
                 ),
-                withdrawal_assumptions=(
-                    proj.withdrawal if proj.withdrawal.is_active else None
-                ),
+                # Partial withdrawals reduce AV, not policy count — handled in
+                # the AV layer. The decrement engine models withdrawal_decrement
+                # as a termination, which would leak the unwithdrawn 90% of AV.
+                withdrawal_assumptions=None,
                 # AV crediting is handled below; do not double-apply via
                 # the mortality engine's crediting_accrual path.
                 creditor_config=None,
@@ -154,6 +161,7 @@ class MygaProjectionEngine:
         mort_rows: list[MortalityProjectionRow],
         frequency: ProjectionFrequency,
         surrender_schedule: SurrenderChargeSchedule | None,
+        withdrawal_cfg: WithdrawalAssumptions | None,
     ) -> list[MygaCashFlowRecord]:
         """Layer AV roll-forward on top of the decrement schedule."""
 
@@ -200,18 +208,19 @@ class MygaProjectionEngine:
             mva_adjustment = 0.0
 
             # ── Partial withdrawals ───────────────────────────────────────────
-            # withdrawal_dec is the count of policies taking a free withdrawal;
-            # each withdraws free_withdrawal_pct of their AV (no surrender charge).
-            withdrawal_dec = row.single_withdrawal_decrement or 0.0
-            free_wd_per_policy = av_mid * policy.free_withdrawal_pct
-            partial_withdrawals = withdrawal_dec * free_wd_per_policy
-
-            # AV per surviving policy for next period: reduce by the weighted
-            # withdrawal drain (withdrawal_dec policies each took free_wd_per_policy).
-            withdrawal_drain = (
-                free_wd_per_policy * withdrawal_dec / inforce_bop
-                if inforce_bop > 0 else 0.0
-            )
+            # A fraction of in-force policyholders takes a free withdrawal of
+            # free_withdrawal_pct × AV each period. This drains AV but does NOT
+            # terminate the policy, so it never touches the inforce count.
+            period_w_rate = 0.0
+            if withdrawal_cfg is not None:
+                annual_w_rate = withdrawal_cfg.partial_withdrawal.rate_at_duration(
+                    policy_year
+                )
+                period_w_rate = LapseDecrementCalculator.annual_to_periodic(
+                    annual_w_rate, frequency
+                )
+            withdrawal_drain = av_mid * policy.free_withdrawal_pct * period_w_rate
+            partial_withdrawals = inforce_bop * withdrawal_drain
 
             # ── Maturity: pay out remaining AV at guarantee end ───────────────
             inforce_eop = row.single_inforce_end or 0.0
@@ -238,6 +247,7 @@ class MygaProjectionEngine:
                     mva_adjustment=mva_adjustment,
                     surrender_benefits=surrender_benefits,
                     death_benefits=death_benefits,
+                    maturity_benefits=maturity_benefits,
                     account_value_eop=account_value_eop,
                     lives_in_force=inforce_eop,
                 )

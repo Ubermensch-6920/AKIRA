@@ -8,9 +8,6 @@ import pytest
 
 from actuarial_model.assumptions.sets import (
     AssumptionSet,
-    CreditorConfig,
-    FixedCreditingConfig,
-    StatCarvmConfig,
     WithdrawalAssumptions,
 )
 from actuarial_model.core.projections.myga import (
@@ -28,9 +25,7 @@ from actuarial_model.mortality.decrements import (
 from actuarial_model.withdrawal.rates import (
     FreeWithdrawalConfig,
     PartialWithdrawalTable,
-    SurrenderChargeSchedule,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -135,7 +130,7 @@ def test_av_growth_at_guaranteed_rate(engine: MygaProjectionEngine, zero_aset: A
 
 
 def test_av_compounds_over_time(engine: MygaProjectionEngine, zero_aset: AssumptionSet):
-    """After 12 months with no decrements, AV_EOP ≈ AV_BOP × (1 + annual_rate)."""
+    """After 12 months with no decrements, AV_EOP ≈ AV_BOP x (1 + annual_rate)."""
     av0 = 100_000.0
     rate = 0.04
     policy = _simple_policy(account_value=av0, guaranteed_rate=rate, guarantee_period_years=10)
@@ -246,7 +241,7 @@ def test_no_surrender_charge_beyond_schedule(
 def test_maturity_terminates_projection(
     engine: MygaProjectionEngine, zero_aset: AssumptionSet
 ):
-    """Projection should stop at guarantee_end_date (5 years × 12 months = 60 periods)."""
+    """Projection should stop at guarantee_end_date (5 years x 12 months = 60 periods)."""
     policy = _simple_policy(guarantee_period_years=5)
     result = engine.project_policy(
         policy, zero_aset, horizon_years=10, frequency=ProjectionFrequency.MONTHLY

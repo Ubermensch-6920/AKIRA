@@ -27,6 +27,7 @@ class MygaCashFlowRecord(BaseModel):
     mva_adjustment: float
     surrender_benefits: float
     death_benefits: float
+    maturity_benefits: float = 0.0
     account_value_eop: float
     lives_in_force: float  # surviving fraction after mortality + lapse decrements
 
