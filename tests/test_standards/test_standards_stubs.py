@@ -12,10 +12,17 @@ def test_bel_requires_cash_flows(sample_assumption_set: AssumptionSet) -> None:
         bel.calculate(bel.BelInput(assumption_set=sample_assumption_set))
 
 
+def test_stat_carvm_empty_run(sample_assumption_set: AssumptionSet) -> None:
+    """CARVM is implemented — an empty policy list yields a zero reserve."""
+    output = stat_carvm.calculate(
+        stat_carvm.StatCarvmInput(assumption_set=sample_assumption_set)
+    )
+    assert output.reserve_result.gross_reserve == 0.0
+
+
 @pytest.mark.parametrize(
     "module, input_cls",
     [
-        (stat_carvm, stat_carvm.StatCarvmInput),
         (stat_vm22, stat_vm22.StatVm22Input),
         (ldti, ldti.LdtiInput),
         (fas157, fas157.Fas157Input),

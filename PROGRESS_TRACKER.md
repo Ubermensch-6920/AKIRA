@@ -25,7 +25,7 @@
 | **Asset ledger** | `assets/ledger.py` | 🔴 Stub | — | Asset transaction journal |
 | **Asset valuation** | `assets/valuation.py` | 🔴 Stub | — | Multi-framework asset views (BV, FV, statutory) |
 | **BEL** | `standards/bel.py` | ✅ Complete | 7 | Discounts liability outflows at risk-free curve; end-to-end pipeline tested |
-| **STAT CARVM** | `standards/stat_carvm.py` | 🔴 Stub | — | Pre-VM-22 statutory reserve |
+| **STAT CARVM** | `standards/stat_carvm.py` | ✅ Complete | 13 | Greatest-PV of guaranteed benefits; CSV floor; closed-form tested |
 | **VM-22** | `standards/stat_vm22.py` | 🔴 Stub | — | NAIC VM-22 deterministic + stochastic reserve |
 | **LDTI** | `standards/ldti.py` | 🔴 Stub | — | ASC 944 LFPB + DAC |
 | **FAS 157** | `standards/fas157.py` | 🔴 Stub | — | ASC 820 fair-value liability |
@@ -112,17 +112,21 @@ Working pipeline: `MygaPolicyState` → `seriatim.calculate` → `GrossCashFlows
 
 ---
 
-### Priority 1 — Aggregation & First Statutory Reserve
+### ✅ Done (2026-06-11) — STAT CARVM
+
+- ~~`standards/stat_carvm.py`~~ — Greatest-PV-of-guaranteed-benefits engine with CSV floor.
+  13 closed-form tests. Added `valuation_interest_rate` to `StatCarvmConfig`
+  (ASSUMPTION REQUIRED: SVL dynamic valuation rate). Simplifications: elective
+  benefits only (no AG33 mortality-weighted streams), no free-withdrawal
+  corridor election, no Reg 126 CFT overlay.
+
+### Priority 1 — Aggregation & VM-22
 
 **1. `core/aggregation.py` — Rollup**
 - Aggregate policy-level results into cohort → segment → legal entity tables.
 - Needed before API routes can return anything meaningful.
 
-**2. `standards/stat_carvm.py` — Pre-VM-22 CARVM**
-- Simplest statutory reserve; good validation baseline against hand-calculated numbers.
-- Uses BEL + lapse-supported reserve adjustment.
-
-**3. `standards/stat_vm22.py` — VM-22 Reserve**
+**2. `standards/stat_vm22.py` — VM-22 Reserve**
 - Deterministic Reserve (DR) + Stochastic Reserve (SR).
 - Required for NAIC statutory compliance target.
 
