@@ -20,6 +20,9 @@ def _default_frameworks() -> list[Framework]:
         Framework.BEL,
         Framework.STAT_CARVM,
         Framework.STAT_VM22,
+        Framework.LDTI,
+        Framework.FAS157,
+        Framework.EBS,
         Framework.NAIC_RBC,
     ]
 

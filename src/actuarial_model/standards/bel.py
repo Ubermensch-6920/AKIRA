@@ -143,6 +143,36 @@ def _discount_outflows(
     return policy_pv, total_undiscounted
 
 
+def _pv_weighted_duration(
+    cash_flows: GrossCashFlows,
+    curve: DiscountCurve,
+    valuation_date: date,
+) -> float:
+    """Macaulay-style duration of the liability outflows, in years.
+
+    PV-weighted mean time to payment; 0.0 when there are no future outflows.
+    """
+    pv_total = 0.0
+    pv_time = 0.0
+    for policy_cf in cash_flows.policies:
+        for record in policy_cf.records:
+            if record.period_end_date <= valuation_date:
+                continue
+            outflow = (
+                record.death_benefits
+                + record.surrender_benefits
+                + record.partial_withdrawals
+                + record.maturity_benefits
+            )
+            if outflow == 0.0:
+                continue
+            t = (record.period_end_date - valuation_date).days / 365.25
+            pv = outflow * curve.discount_factor_for_date(record.period_end_date)
+            pv_total += pv
+            pv_time += pv * t
+    return pv_time / pv_total if pv_total > 0.0 else 0.0
+
+
 def _aggregate_labels(policies: list[MygaPolicyState]) -> tuple[str, str, str]:
     """Single (legal_entity, segment, cohort_id) label set for the aggregate result."""
     if not policies:

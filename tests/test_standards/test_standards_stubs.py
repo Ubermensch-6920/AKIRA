@@ -1,4 +1,4 @@
-"""Smoke tests: every reserve framework module raises NotImplementedError."""
+"""Smoke tests: every reserve framework module guards its required inputs."""
 
 import pytest
 
@@ -20,22 +20,18 @@ def test_stat_carvm_empty_run(sample_assumption_set: AssumptionSet) -> None:
     assert output.reserve_result.gross_reserve == 0.0
 
 
-def test_stat_vm22_requires_cash_flows(sample_assumption_set: AssumptionSet) -> None:
-    """VM-22 is implemented — calling it without cash flows is a usage error."""
-    with pytest.raises(ValueError, match="gross_cash_flows"):
-        stat_vm22.calculate(stat_vm22.StatVm22Input(assumption_set=sample_assumption_set))
-
-
 @pytest.mark.parametrize(
     "module, input_cls",
     [
+        (stat_vm22, stat_vm22.StatVm22Input),
         (ldti, ldti.LdtiInput),
         (fas157, fas157.Fas157Input),
         (ebs, ebs.EbsInput),
     ],
 )
-def test_standards_stubs(
+def test_frameworks_require_cash_flows(
     module, input_cls, sample_assumption_set: AssumptionSet
 ) -> None:
-    with pytest.raises(NotImplementedError):
+    """Every framework is implemented — missing cash flows is a usage error."""
+    with pytest.raises(ValueError, match="gross_cash_flows"):
         module.calculate(input_cls(assumption_set=sample_assumption_set))

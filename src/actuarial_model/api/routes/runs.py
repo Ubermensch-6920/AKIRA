@@ -3,10 +3,13 @@
 POST /runs executes the Phase 1 pipeline synchronously:
 
     seriatim projection → reinsurance application → framework reserves
-    (BEL / CARVM / VM-22) → aggregation → NAIC RBC
+    (BEL / CARVM / VM-22 / LDTI / FAS 157 / EBS) → aggregation → NAIC RBC
 
 and persists the run record plus every result row to the DuckDB store,
-where GET /results can query them back.
+where GET /results can query them back. Supplementary results (LDTI DAC,
+EBS risk margin) are persisted and returned but excluded from the
+reserve aggregation — DAC is an asset and the risk margin is already
+inside the EBS technical provisions.
 """
 
 from datetime import UTC, datetime
@@ -20,14 +23,12 @@ from ...core import aggregation, seriatim
 from ...models.results import ReserveResult
 from ...models.runs import ValuationRun
 from ...reinsurance import application
-from ...standards import bel, stat_carvm, stat_vm22
+from ...standards import bel, ebs, fas157, ldti, stat_carvm, stat_vm22
 from ...utils.ids import new_assumption_set_id, new_run_id
 from ..schemas.runs import RunRequest, RunResponse
 from ..store import get_store
 
 router = APIRouter()
-
-_UNSUPPORTED = {Framework.LDTI, Framework.FAS157, Framework.EBS}
 
 
 @router.get("/")
@@ -48,13 +49,6 @@ def get_run(run_id: str) -> dict:
 @router.post("/", status_code=201)
 def submit_run(request: RunRequest) -> RunResponse:
     """Execute a valuation run end-to-end and persist its results."""
-    unsupported = sorted(f.value for f in request.frameworks if f in _UNSUPPORTED)
-    if unsupported:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Framework(s) not implemented in Phase 1: {', '.join(unsupported)}",
-        )
-
     store = get_store()
     run_id = new_run_id()
     assumption_set = request.assumption_set or _default_assumption_set(request)
@@ -130,7 +124,10 @@ def _execute_pipeline(
         ceded_cf = reins_out.ceded_cash_flows
 
     # ── Framework reserves ───────────────────────────────────────────────
+    # Primary results feed the aggregation; supplementary results (DAC,
+    # EBS risk margin) are persisted and returned alongside them.
     reserve_results: list[ReserveResult] = []
+    supplementary_results: list[ReserveResult] = []
     if Framework.BEL in request.frameworks:
         reserve_results.append(
             bel.calculate(
@@ -171,8 +168,50 @@ def _execute_pipeline(
                 )
             ).reserve_result
         )
+    if Framework.LDTI in request.frameworks:
+        ldti_out = ldti.calculate(
+            ldti.LdtiInput(
+                assumption_set=assumption_set,
+                gross_cash_flows=gross_cf,
+                ceded_cash_flows=ceded_cf,
+                policies=request.policies,
+                valuation_date=request.valuation_date,
+                curve_points=request.curve_points,
+                run_id=run_id,
+            )
+        )
+        reserve_results.append(ldti_out.lfpb_result)
+        supplementary_results.append(ldti_out.dac_result)
+    if Framework.FAS157 in request.frameworks:
+        reserve_results.append(
+            fas157.calculate(
+                fas157.Fas157Input(
+                    assumption_set=assumption_set,
+                    gross_cash_flows=gross_cf,
+                    ceded_cash_flows=ceded_cf,
+                    policies=request.policies,
+                    valuation_date=request.valuation_date,
+                    curve_points=request.curve_points,
+                    run_id=run_id,
+                )
+            ).reserve_result
+        )
+    if Framework.EBS in request.frameworks:
+        ebs_out = ebs.calculate(
+            ebs.EbsInput(
+                assumption_set=assumption_set,
+                gross_cash_flows=gross_cf,
+                ceded_cash_flows=ceded_cf,
+                policies=request.policies,
+                valuation_date=request.valuation_date,
+                curve_points=request.curve_points,
+                run_id=run_id,
+            )
+        )
+        reserve_results.append(ebs_out.technical_provisions)
+        supplementary_results.append(ebs_out.risk_margin)
 
-    for result in reserve_results:
+    for result in reserve_results + supplementary_results:
         store.save_result(
             run_id,
             result_type="RESERVE",
@@ -224,7 +263,9 @@ def _execute_pipeline(
 
     return RunResponse(
         run=run,
-        reserve_results=[r.model_dump(mode="json") for r in reserve_results],
+        reserve_results=[
+            r.model_dump(mode="json") for r in reserve_results + supplementary_results
+        ],
         capital_results=[c.model_dump(mode="json") for c in capital_results],
         aggregation=aggregation_payload,
     )

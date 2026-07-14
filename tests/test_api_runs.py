@@ -73,12 +73,15 @@ def test_run_completes_with_all_phase1_frameworks(completed_run: dict):
     assert run["completed_at"] is not None
 
     frameworks = {r["metadata"]["framework"] for r in completed_run["reserve_results"]}
-    assert frameworks == {"BEL", "STAT_CARVM", "STAT_VM22"}
+    assert frameworks == {"BEL", "STAT_CARVM", "STAT_VM22", "LDTI", "FAS157", "EBS"}
+    # 6 primary results + LDTI DAC + EBS risk margin
+    assert len(completed_run["reserve_results"]) == 8
     assert len(completed_run["capital_results"]) == 1
     assert completed_run["capital_results"][0]["metadata"]["framework"] == "NAIC_RBC"
 
     aggregation = completed_run["aggregation"]
-    assert len(aggregation["by_legal_entity"]) == 3  # one row per framework
+    # One row per framework; DAC / risk margin stay out of the rollup.
+    assert len(aggregation["by_legal_entity"]) == 6
 
 
 def test_run_is_listed_and_fetchable(completed_run: dict):
@@ -127,7 +130,6 @@ def test_run_with_reinsurance_cedes_half_of_bel():
     )
 
 
-def test_unsupported_framework_rejected():
-    response = client.post("/runs/", json=_run_body(frameworks=["LDTI"]))
+def test_unknown_framework_rejected():
+    response = client.post("/runs/", json=_run_body(frameworks=["NOT_A_FRAMEWORK"]))
     assert response.status_code == 422
-    assert "LDTI" in response.json()["detail"]

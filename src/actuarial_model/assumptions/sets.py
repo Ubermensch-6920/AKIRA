@@ -122,6 +122,9 @@ class LdtiConfig(BaseModel):
     cohort_granularity: LdtiCohortGranularity = LdtiCohortGranularity.ANNUAL
     dac_basis: DacBasis = DacBasis.STRAIGHT_LINE
     assumption_update_freq: str = "ANNUAL"
+    # ASSUMPTION REQUIRED: deferrable acquisition cost as a % of single
+    # premium — placeholder until acquisition expenses are carried per policy.
+    acquisition_cost_pct: float = 0.0
     use_contract_boundary: bool = True
     net_premium_ratio_cap: float = 1.0
     expense_fully_allocated: bool = True
