@@ -1,4 +1,4 @@
-"""Smoke tests: every reserve framework module raises NotImplementedError."""
+"""Smoke tests: every reserve framework module guards its required inputs."""
 
 import pytest
 
@@ -29,8 +29,9 @@ def test_stat_carvm_empty_run(sample_assumption_set: AssumptionSet) -> None:
         (ebs, ebs.EbsInput),
     ],
 )
-def test_standards_stubs(
+def test_frameworks_require_cash_flows(
     module, input_cls, sample_assumption_set: AssumptionSet
 ) -> None:
-    with pytest.raises(NotImplementedError):
+    """Every framework is implemented — missing cash flows is a usage error."""
+    with pytest.raises(ValueError, match="gross_cash_flows"):
         module.calculate(input_cls(assumption_set=sample_assumption_set))

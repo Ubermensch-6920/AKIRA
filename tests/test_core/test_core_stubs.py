@@ -16,9 +16,12 @@ def test_seriatim_empty_run(sample_assumption_set: AssumptionSet) -> None:
     assert output.cash_flows.policies == []
 
 
-def test_aggregation_stub() -> None:
-    with pytest.raises(NotImplementedError):
-        aggregation.calculate(aggregation.AggregationInput(seriatim_results=[]))
+def test_aggregation_empty_run() -> None:
+    """Aggregation is implemented — an empty result list rolls up to empty tables."""
+    output = aggregation.calculate(aggregation.AggregationInput(seriatim_results=[]))
+    assert output.by_cohort == []
+    assert output.by_segment == []
+    assert output.by_legal_entity == []
 
 
 def test_discount_requires_curve_points(sample_assumption_set: AssumptionSet) -> None:

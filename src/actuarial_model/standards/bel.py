@@ -9,7 +9,9 @@ Phase 1 scope:
   - Liability outflows per period = death benefits + surrender benefits
     + partial withdrawals + maturity benefits, assumed paid at period end.
   - Only cash flows falling strictly after the valuation date contribute.
-  - No reinsurance applied yet, so ceded BEL = 0 and net = gross.
+  - Ceded BEL discounts the ceded stream produced by
+    :mod:`actuarial_model.reinsurance.application` on the same curve;
+    when no ceded stream is supplied, ceded BEL = 0 and net = gross.
 """
 
 from datetime import date
@@ -18,7 +20,7 @@ from pydantic import BaseModel
 
 from ..assumptions.enums import Framework
 from ..assumptions.sets import AssumptionSet
-from ..core.discount import CurvePoint, DiscountInput, build_curve
+from ..core.discount import CurvePoint, DiscountCurve, DiscountInput, build_curve
 from ..models.cash_flows import GrossCashFlows
 from ..models.policy import MygaPolicyState
 from ..models.results import ReserveResult, ResultMetadata
@@ -31,6 +33,7 @@ class BelInput(BaseModel):
 
     assumption_set: AssumptionSet
     gross_cash_flows: GrossCashFlows | None = None
+    ceded_cash_flows: GrossCashFlows | None = None  # from reinsurance.application
     policies: list[MygaPolicyState] = []
     valuation_date: date | None = None
     curve_points: list[CurvePoint] = []  # raw yield curve data for discounting
@@ -73,25 +76,17 @@ def calculate(inputs: BelInput) -> BelOutput:
         )
     )
 
-    policy_bel: dict[str, float] = {}
-    total_outflows_undiscounted = 0.0
-
-    for policy_cf in inputs.gross_cash_flows.policies:
-        pv = 0.0
-        for record in policy_cf.records:
-            if record.period_end_date <= valuation_date:
-                continue
-            outflow = (
-                record.death_benefits
-                + record.surrender_benefits
-                + record.partial_withdrawals
-                + record.maturity_benefits
-            )
-            total_outflows_undiscounted += outflow
-            pv += outflow * curve.discount_factor_for_date(record.period_end_date)
-        policy_bel[policy_cf.policy_id] = pv
-
+    policy_bel, total_outflows_undiscounted = _discount_outflows(
+        inputs.gross_cash_flows, curve, valuation_date
+    )
     gross_bel = sum(policy_bel.values())
+
+    policy_ceded_bel: dict[str, float] = {}
+    if inputs.ceded_cash_flows is not None:
+        policy_ceded_bel, _ = _discount_outflows(
+            inputs.ceded_cash_flows, curve, valuation_date
+        )
+    ceded_bel = sum(policy_ceded_bel.values())
 
     # Cohort labels come from the seriatim inputs when supplied; a mixed or
     # unlabelled run aggregates under "ALL".
@@ -109,10 +104,11 @@ def calculate(inputs: BelInput) -> BelOutput:
         segment=segment,
         cohort_id=cohort_id,
         gross_reserve=gross_bel,
-        ceded_reserve=0.0,  # Phase 1: reinsurance not yet applied
-        net_reserve=gross_bel,
+        ceded_reserve=ceded_bel,
+        net_reserve=gross_bel - ceded_bel,
         components={
             "policy_bel": policy_bel,
+            "policy_ceded_bel": policy_ceded_bel,
             "policy_count": len(policy_bel),
             "total_outflows_undiscounted": total_outflows_undiscounted,
             "risk_free_curve": bel_config.risk_free_curve.value,
@@ -120,6 +116,61 @@ def calculate(inputs: BelInput) -> BelOutput:
         },
     )
     return BelOutput(reserve_result=result)
+
+
+def _discount_outflows(
+    cash_flows: GrossCashFlows,
+    curve: DiscountCurve,
+    valuation_date: date,
+) -> tuple[dict[str, float], float]:
+    """Per-policy PV of liability outflows and the undiscounted total."""
+    policy_pv: dict[str, float] = {}
+    total_undiscounted = 0.0
+    for policy_cf in cash_flows.policies:
+        pv = 0.0
+        for record in policy_cf.records:
+            if record.period_end_date <= valuation_date:
+                continue
+            outflow = (
+                record.death_benefits
+                + record.surrender_benefits
+                + record.partial_withdrawals
+                + record.maturity_benefits
+            )
+            total_undiscounted += outflow
+            pv += outflow * curve.discount_factor_for_date(record.period_end_date)
+        policy_pv[policy_cf.policy_id] = pv
+    return policy_pv, total_undiscounted
+
+
+def _pv_weighted_duration(
+    cash_flows: GrossCashFlows,
+    curve: DiscountCurve,
+    valuation_date: date,
+) -> float:
+    """Macaulay-style duration of the liability outflows, in years.
+
+    PV-weighted mean time to payment; 0.0 when there are no future outflows.
+    """
+    pv_total = 0.0
+    pv_time = 0.0
+    for policy_cf in cash_flows.policies:
+        for record in policy_cf.records:
+            if record.period_end_date <= valuation_date:
+                continue
+            outflow = (
+                record.death_benefits
+                + record.surrender_benefits
+                + record.partial_withdrawals
+                + record.maturity_benefits
+            )
+            if outflow == 0.0:
+                continue
+            t = (record.period_end_date - valuation_date).days / 365.25
+            pv = outflow * curve.discount_factor_for_date(record.period_end_date)
+            pv_total += pv
+            pv_time += pv * t
+    return pv_time / pv_total if pv_total > 0.0 else 0.0
 
 
 def _aggregate_labels(policies: list[MygaPolicyState]) -> tuple[str, str, str]:
