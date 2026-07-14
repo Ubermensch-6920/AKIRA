@@ -6,10 +6,15 @@ from actuarial_model.assumptions.sets import AssumptionSet
 from actuarial_model.capital import ecr, rbc, stochastic
 
 
+def test_rbc_empty_run(sample_assumption_set: AssumptionSet) -> None:
+    """RBC is implemented — no reserves and no assets yield zero capital."""
+    output = rbc.calculate(rbc.RbcInput(assumption_set=sample_assumption_set))
+    assert output.capital_result.capital_amount == 0.0
+
+
 @pytest.mark.parametrize(
     "module, input_cls",
     [
-        (rbc, rbc.RbcInput),
         (ecr, ecr.EcrInput),
         (stochastic, stochastic.StochasticCapitalInput),
     ],

@@ -163,6 +163,42 @@ def test_metadata_and_components(sample_assumption_set: AssumptionSet):
     assert "P1" in result.components["policy_bel"]
 
 
+def test_ceded_stream_reduces_net(sample_assumption_set: AssumptionSet):
+    """A ceded stream discounts on the same curve; net = gross - ceded."""
+    gross = GrossCashFlows(
+        valuation_date=VAL_DATE,
+        policies=[
+            PolicyCashFlows(
+                policy_id="P1",
+                records=[_record(1, date(2026, 1, 1), maturity=10_000.0)],
+            )
+        ],
+    )
+    ceded = GrossCashFlows(
+        valuation_date=VAL_DATE,
+        policies=[
+            PolicyCashFlows(
+                policy_id="P1",
+                records=[_record(1, date(2026, 1, 1), maturity=5_000.0)],
+            )
+        ],
+    )
+    output = calculate(
+        BelInput(
+            assumption_set=sample_assumption_set,
+            gross_cash_flows=gross,
+            ceded_cash_flows=ceded,
+            curve_points=_flat_curve(0.04),
+        )
+    )
+    result = output.reserve_result
+    assert result.ceded_reserve == pytest.approx(0.5 * result.gross_reserve, rel=1e-9)
+    assert result.net_reserve == pytest.approx(result.gross_reserve - result.ceded_reserve)
+    assert result.components["policy_ceded_bel"]["P1"] == pytest.approx(
+        result.ceded_reserve
+    )
+
+
 def test_end_to_end_seriatim_to_bel(sample_assumption_set: AssumptionSet):
     """Full Phase 1 pipeline: policy → seriatim projection → BEL discounting."""
     policy = MygaPolicyState(

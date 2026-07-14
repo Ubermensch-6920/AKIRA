@@ -32,6 +32,7 @@ class Framework(str, Enum):
     FAS157 = "FAS157"
     EBS = "EBS"
     BEL = "BEL"
+    NAIC_RBC = "NAIC_RBC"  # capital framework — stamps CapitalResult records
 
 
 # ────────────────────────────────────────────────────────────────────────

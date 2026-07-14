@@ -1,6 +1,6 @@
 # AKIRA — Development Progress Tracker
 
-*Last updated: 2026-06-11*
+*Last updated: 2026-07-14*
 
 ---
 
@@ -15,22 +15,22 @@
 | **Crediting calculator** | `crediting/calculator.py` | ✅ Complete | 16 | Fixed-rate; periodic conversion formula |
 | **Assumption config** | `assumptions/sets.py` + `enums.py` + `validators.py` | ✅ Complete | Smoke | Full config framework; 20+ enums; cross-field validators |
 | **Pydantic models** | `models/` (5 files) | ✅ Complete | Smoke | Policy, asset, reinsurance, results, cash flow structures |
-| **FastAPI skeleton** | `api/main.py` + `api/routes/` | 🟡 Skeleton | 1 (health) | CORS + health check working; all route bodies are stubs |
+| **FastAPI runs/results** | `api/main.py` + `api/routes/` + `api/store.py` | ✅ Complete | 5 | POST /runs executes the full pipeline; GET /runs, /results query the DuckDB store; assumptions/data routers still stubs |
 | **MYGA projection** | `core/projections/myga.py` | ✅ Complete | 12 | Two-layer engine: decrements + AV roll-forward; ROAV/ROP, surrender charges, maturity |
 | **Seriatim dispatcher** | `core/seriatim.py` | ✅ Complete | 3 | Routes MYGA policies; Phase 2/3 products raise NotImplementedError |
-| **Aggregation** | `core/aggregation.py` | 🔴 Stub | — | Cohort → Segment → BalanceSheet rollup |
+| **Aggregation** | `core/aggregation.py` | ✅ Complete | 5 | Cohort → segment → legal-entity rollup, framework-partitioned |
 | **Discount / yield curve** | `core/discount.py` | ✅ Complete | 17 | Linear/cubic-spline zero curve, flat extrapolation, DF helpers |
-| **Quota-share reinsurance** | `reinsurance/quota_share.py` | 🔴 Stub | — | Phase 1 reinsurance type; treaty model exists |
-| **Reinsurance application** | `reinsurance/application.py` | 🔴 Stub | — | Routes policy-treaty pairs to reinsurance engines |
+| **Quota-share reinsurance** | `reinsurance/quota_share.py` | ✅ Complete | 6 | Proportional ceded/retained split of all monetary fields |
+| **Reinsurance application** | `reinsurance/application.py` | ✅ Complete | 4 | Routes policy-treaty pairs via `reinsurance_treaty_id`; Phase 2 types raise |
 | **Asset ledger** | `assets/ledger.py` | 🔴 Stub | — | Asset transaction journal |
 | **Asset valuation** | `assets/valuation.py` | 🔴 Stub | — | Multi-framework asset views (BV, FV, statutory) |
-| **BEL** | `standards/bel.py` | ✅ Complete | 7 | Discounts liability outflows at risk-free curve; end-to-end pipeline tested |
+| **BEL** | `standards/bel.py` | ✅ Complete | 8 | Discounts liability outflows at risk-free curve; ceded stream wired → net = gross − ceded |
 | **STAT CARVM** | `standards/stat_carvm.py` | ✅ Complete | 13 | Greatest-PV of guaranteed benefits; CSV floor; closed-form tested |
-| **VM-22** | `standards/stat_vm22.py` | 🔴 Stub | — | NAIC VM-22 deterministic + stochastic reserve |
+| **VM-22** | `standards/stat_vm22.py` | ✅ Complete | 9 | DR + SR (CTE over placeholder rate-shock scenario set); DR-only / max(DR, SR) |
 | **LDTI** | `standards/ldti.py` | 🔴 Stub | — | ASC 944 LFPB + DAC |
 | **FAS 157** | `standards/fas157.py` | 🔴 Stub | — | ASC 820 fair-value liability |
 | **EBS** | `standards/ebs.py` | 🔴 Stub | — | Bermuda Economic Balance Sheet |
-| **NAIC RBC** | `capital/rbc.py` | 🔴 Stub | — | Risk-Based Capital C-1 through C-4 |
+| **NAIC RBC** | `capital/rbc.py` | ✅ Complete | 7 | Factor-based C-1…C-4, covariance, ACL; ratio when TAC supplied |
 | **Bermuda ECR** | `capital/ecr.py` | 🔴 Stub | — | Enhanced Capital Requirement |
 | **Stochastic capital** | `capital/stochastic.py` | 🔴 Stub | — | Scenario-driven stochastic capital |
 | **Coinsurance** | `reinsurance/coinsurance.py` | 🔴 Phase 2 | — | |
@@ -58,9 +58,14 @@
 | Mortality | `test_mortality/test_decrements.py` | 12 | Single/joint life, lapse/withdrawal/crediting integration |
 | Models | `test_models/` | Smoke | Schema validation only |
 | Assumptions | `test_assumptions/` | Smoke | Schema validation only |
-| API | `test_api_smoke.py` | 1 | Health check |
-| Core / Standards / Capital / Reinsurance | `test_core/` etc. | Stub | `NotImplementedError` guards only |
-| **Total** | | **~111** | |
+| API | `test_api_smoke.py` + `test_api_runs.py` | 6 | Health check + POST /runs pipeline, /results retrieval |
+| Aggregation | `test_core/test_aggregation.py` | 5 | Grain rollups, framework partitioning |
+| VM-22 | `test_standards/test_stat_vm22.py` | 9 | DR hand-calc, CTE tail, component selection, ceded |
+| Quota share | `test_reinsurance/test_quota_share.py` | 6 | Split conservation, validation |
+| Reinsurance application | `test_reinsurance/test_application.py` | 4 | Routing, retained fallback, Phase 2 guard |
+| NAIC RBC | `test_capital/test_rbc.py` | 7 | Closed-form ACL, reserve-base preference, ratio |
+| Remaining stubs | `test_core/` etc. | Stub | `NotImplementedError` guards (LDTI, FAS 157, EBS, ECR, Phase 2 reinsurance/products) |
+| **Total** | | **203** | |
 
 ---
 
@@ -120,38 +125,37 @@ Working pipeline: `MygaPolicyState` → `seriatim.calculate` → `GrossCashFlows
   benefits only (no AG33 mortality-weighted streams), no free-withdrawal
   corridor election, no Reg 126 CFT overlay.
 
-### Priority 1 — Aggregation & VM-22
+### ✅ Done (2026-07-14) — Aggregation, VM-22, Phase 1 reinsurance, RBC, REST
 
-**1. `core/aggregation.py` — Rollup**
-- Aggregate policy-level results into cohort → segment → legal entity tables.
-- Needed before API routes can return anything meaningful.
+- ~~`core/aggregation.py`~~ — Cohort → segment → legal-entity rollup, partitioned by
+  framework. 5 tests.
+- ~~`standards/stat_vm22.py`~~ — DR (best-estimate outflows on the valuation curve) +
+  SR (CTE65/70/80 over a placeholder parallel-rate-shock scenario set standing in for
+  the NAIC generator); DR-only or max(DR, SR) per config. 9 tests.
+- ~~`reinsurance/quota_share.py`~~ — Proportional ceded/retained split. 6 tests.
+- ~~`reinsurance/application.py`~~ — Policy → treaty routing via
+  `reinsurance_treaty_id`; ceded BEL / VM-22 wired (net = gross − ceded). 4 tests.
+- ~~`capital/rbc.py`~~ — Factor-based C-1…C-4 → covariance → ACL RBC; RBC ratio when
+  Total Adjusted Capital is supplied (ASSUMPTION REQUIRED: replace approximate
+  factors with published NAIC tables). 7 tests.
+- ~~`api/routes/runs.py` + `api/routes/results.py`~~ — POST /runs executes
+  seriatim → reinsurance → BEL/CARVM/VM-22 → aggregation → RBC and persists to a
+  DuckDB store (`api/store.py`, `AKIRA_DB_PATH`, in-memory default); GET
+  /runs, /runs/{id}, /results, /results/{run_id} query it back. 5 tests.
 
-**2. `standards/stat_vm22.py` — VM-22 Reserve**
-- Deterministic Reserve (DR) + Stochastic Reserve (SR).
-- Required for NAIC statutory compliance target.
+Working pipeline (also live over REST): policies + treaties + curve →
+`GrossCashFlows` → ceded/net → reserves per framework → rollup → ACL RBC.
 
 ---
 
-### Priority 2 — Phase 1 Reinsurance
+### Priority 1 — Phase 2 kickoff (after MYGA validation)
 
-**4. `reinsurance/quota_share.py`**
-- Implement gross→ceded→net split. Treaty model (`ReinsuranceTreaty`) and `GrossCashFlows` structure both exist.
-- Then wire ceded BEL into `standards/bel.py` (currently ceded = 0).
+**1. `standards/ldti.py` — ASC 944 LFPB + DAC**
 
-**5. `reinsurance/application.py`**
-- Route each policy-treaty pair to its reinsurance engine; aggregate ceded/net results.
+**2. `standards/fas157.py` — Fair-value liability**
 
----
-
-### Priority 3 — Capital & REST Exposure
-
-**6. `capital/rbc.py` — NAIC RBC**
-- C-1 (asset risk), C-2 (insurance risk), C-3 (interest rate risk), C-4 (business risk).
-- C-2 and C-3 depend on MYGA projection output.
-
-**7. `api/routes/runs.py` + `api/routes/results.py`**
-- Wire `/runs` POST → seriatim → aggregation pipeline.
-- Wire `/results` GET → DuckDB query of persisted run output.
+**3. `assets/ledger.py` + `assets/valuation.py`** — asset side of the balance sheet
+(unblocks a real C-1 feed and TAC for the RBC ratio).
 
 ---
 
@@ -161,17 +165,21 @@ Working pipeline: `MygaPolicyState` → `seriatim.calculate` → `GrossCashFlows
 - Projection basis is pinned to `stat_carvm` config; per-framework bases pending.
 - Surrender schedules resolve from the embedded Athene repository; unknown IDs default to no charges.
 - Decrement engine's `withdrawal_decrement` / `crediting_accrual` paths are bypassed by the MYGA engine (withdrawal modeled in AV layer; counts unaffected) — consider cleaning up the engine itself.
+- VM-22 SR re-discounts the fixed best-estimate cash flows per rate scenario; cash flows are not re-projected per path (dynamic lapse / MVA interaction deferred until an interest-rate path reaches the MYGA engine).
+- Quota share does not model ceding commission / expense allowance cash flows (no premium or expense fields on the MYGA record yet) and ignores treaty effective / termination windows.
+- CARVM ceded reserve stays 0 — statutory reinsurance reserve credit (authorization / collateral rules) not yet applied.
+- RBC factors are approximations of the NAIC Life tables (pre-tax); C-4 is reserve-proxied because premium income isn't carried in the model.
 
 ---
 
 ### Phase 2 Backlog (after MYGA validation)
 
-- `standards/ldti.py` — ASC 944 LFPB + DAC
-- `standards/fas157.py` — Fair-value liability
-- `assets/ledger.py` + `assets/valuation.py` — Asset side of balance sheet
+- `standards/ebs.py` — Bermuda Economic Balance Sheet
 - Reinsurance: coinsurance, ModCo, funds withheld, YRT, XL
 - Product engines: FIA, SPIA
 - Frontend components (dashboard, results tables, scenario comparison charts)
+- API: assumptions / data routers (CRUD for assumption sets, seriatim, assets, treaties)
+- VM-22: real NAIC scenario generator + per-path cash-flow re-projection
 
 ### Phase 3 Backlog
 
@@ -185,6 +193,6 @@ Working pipeline: `MygaPolicyState` → `seriatim.calculate` → `GrossCashFlows
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| **Phase 1** | MYGA + Quota Share; all 6 reserve frameworks; NAIC RBC | 🔶 In progress — decrements done, projection engine next |
+| **Phase 1** | MYGA + Quota Share; all 6 reserve frameworks; NAIC RBC | 🔶 Nearly complete — BEL / CARVM / VM-22 / QS / RBC / REST live; LDTI, FAS 157, EBS remain |
 | **Phase 2** | PRT, SPIA, FIA; Coinsurance, ModCo, FWH, YRT, XL | 🔴 Not started |
 | **Phase 3** | VA, ULSG; Bermuda ECR; stochastic capital | 🔴 Not started |
