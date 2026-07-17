@@ -205,6 +205,7 @@ def _execute_pipeline(
                 policies=request.policies,
                 valuation_date=request.valuation_date,
                 curve_points=request.curve_points,
+                assets=request.assets,  # backing portfolio when tp_approach = SBA
                 run_id=run_id,
             )
         )

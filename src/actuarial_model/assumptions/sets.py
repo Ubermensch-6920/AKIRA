@@ -152,6 +152,11 @@ class EbsConfig(BaseModel):
 
     tp_approach: EbsTPApproach = EbsTPApproach.STANDARD
     illiquidity_premium: EbsIlliquidityPremium = EbsIlliquidityPremium.BMA_PUBLISHED
+    # SBA levers (post-2024 BMA reform direction). ASSUMPTION REQUIRED:
+    # replace with the prescribed spread-cap and default/downgrade cost
+    # tables by rating and tenor.
+    sba_spread_cap_bps: float = 100.0  # max spread over risk-free creditable in discounting
+    sba_default_cost_bps: float = 20.0  # annual default + downgrade cost haircut on asset CFs
     risk_margin_method: RiskMarginMethod = RiskMarginMethod.COST_OF_CAPITAL
     cost_of_capital_rate: float = 0.06
     scr_approach: EbsSCRApproach = EbsSCRApproach.STANDARD_FORMULA

@@ -29,7 +29,7 @@
 | **VM-22** | `standards/stat_vm22.py` | ✅ Complete | 9 | DR + SR (CTE over placeholder rate-shock scenario set); DR-only / max(DR, SR) |
 | **LDTI** | `standards/ldti.py` | ✅ Complete | 9 | LFPB (single-premium NPR mechanics) + straight-line DAC; EGP basis raises |
 | **FAS 157** | `standards/fas157.py` | ✅ Complete | 7 | Base PV per discount basis + CoC risk margin + own-credit adjustment |
-| **EBS** | `standards/ebs.py` | ✅ Complete | 7 | TP = BEL @ risk-free + illiquidity premium + CoC risk margin; BMA haircut on ceded |
+| **EBS** | `standards/ebs.py` + `ebs_sba.py` | ✅ Complete | 12 | Standard: BEL @ risk-free + IP. SBA: required-asset solve over 8 rate scenarios vs backing portfolio, spread cap + default cost. CoC risk margin; BMA haircut on ceded |
 | **NAIC RBC** | `capital/rbc.py` | ✅ Complete | 7 | Factor-based C-1…C-4, covariance, ACL; ratio when TAC supplied |
 | **Bermuda ECR** | `capital/ecr.py` | 🔴 Stub | — | Enhanced Capital Requirement |
 | **Stochastic capital** | `capital/stochastic.py` | 🔴 Stub | — | Scenario-driven stochastic capital |
@@ -66,10 +66,11 @@
 | NAIC RBC | `test_capital/test_rbc.py` | 7 | Closed-form ACL, reserve-base preference, ratio |
 | LDTI | `test_standards/test_ldti.py` | 9 | LFPB hand-calc, NPR cap, DAC schedule, EGP guard |
 | FAS 157 | `test_standards/test_fas157.py` | 7 | Discount-basis ordering, own-credit, RM hand-calc |
-| EBS | `test_standards/test_ebs.py` | 7 | Illiquidity premium, haircut on ceded, SBA guard |
+| EBS | `test_standards/test_ebs.py` | 12 | Illiquidity premium, haircut on ceded, SBA defeasance / mismatch / spread cap / default cost / eligibility |
 | Assets | `test_assets/test_assets.py` | 10 | Ledger round-trip/upsert, per-framework carrying values |
+| Product alignment | `test_core/test_product_alignment.py` | 8 | FW basis (MYG vs MaxRate), MGSV floor in engine + CARVM |
 | Remaining stubs | `test_core/` etc. | Stub | `NotImplementedError` guards (ECR, stochastic capital, Phase 2 reinsurance/products) |
-| **Total** | | **236** | |
+| **Total** | | **249** | |
 
 ---
 
@@ -204,6 +205,21 @@ into the RBC step.
 
 ---
 
+### ✅ Done (2026-07-17) — EBS Scenario-Based Approach
+
+- `standards/ebs_sba.py` — SBA best-estimate: per prescribed rate scenario,
+  required assets = portfolio MV × PV(liabilities)/PV(asset CFs); worst of 8
+  scenarios governs, floored at PV(liabilities) on the base curve plus
+  `sba_spread_cap_bps` (post-2024 reform spread-benefit cap); asset CFs
+  haircut by `sba_default_cost_bps`. A matched portfolio defeases at market
+  value. Scenario set is NY7-style placeholder (ASSUMPTION REQUIRED:
+  BMA-prescribed definitions); liability lapse-eligibility presumed — document
+  MVA protection / lapse resilience in the Approved Actuary sign-off.
+- `standards/ebs.py` routes STANDARD vs SBA; `EbsInput.assets` carries the
+  backing portfolio; API passes `request.assets` through. 6 SBA tests.
+
+---
+
 ### Known Phase 1 simplifications (revisit before production)
 
 - MVA is hard-zero in the MYGA engine (no interest-rate path yet).
@@ -228,7 +244,10 @@ into the RBC step.
 - API: assumptions / data routers (CRUD for assumption sets, seriatim, assets, treaties)
 - VM-22: real NAIC scenario generator + per-path cash-flow re-projection
 - FAS 157 / EBS: projected-capital risk margins, published spread/IP tables
-- EBS SBA approach; LDTI EGP basis; asset amortization roll-forward
+- EBS SBA: BMA-prescribed scenario definitions, prescribed spread-cap /
+  default-cost tables by rating and tenor, liability-side lapse-eligibility
+  testing, interim-liquidity (forced-sale) modeling
+- LDTI EGP basis; asset amortization roll-forward
 
 ### Phase 3 Backlog
 
