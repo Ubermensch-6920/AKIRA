@@ -19,23 +19,11 @@ Phase 1 simplifications (documented for review):
 from pydantic import BaseModel
 
 from ..assumptions.enums import ReinsuranceTreatyType
-from ..models.cash_flows import GrossCashFlows, MygaCashFlowRecord, PolicyCashFlows
+from ..models.cash_flows import GrossCashFlows
 from ..models.reinsurance import ReinsuranceTreaty
+from .proportional import split_proportional, validate_share
 
 METHODOLOGY_VERSION = "quota_share_v0.1.0"
-
-# Monetary fields on MygaCashFlowRecord that split proportionally under QS.
-_MONETARY_FIELDS = (
-    "account_value_bop",
-    "interest_credited",
-    "partial_withdrawals",
-    "surrender_charge",
-    "mva_adjustment",
-    "surrender_benefits",
-    "death_benefits",
-    "maturity_benefits",
-    "account_value_eop",
-)
 
 
 class QuotaShareInput(BaseModel):
@@ -65,47 +53,12 @@ def calculate(inputs: QuotaShareInput) -> QuotaShareOutput:
             f"Treaty {treaty.treaty_id} is {treaty.treaty_type.value}; "
             "the quota-share engine handles QUOTA_SHARE treaties only."
         )
-    if treaty.quota_share_pct is None:
-        raise ValueError(f"Treaty {treaty.treaty_id} has no quota_share_pct.")
-    pct = treaty.quota_share_pct
-    if not 0.0 <= pct <= 1.0:
-        raise ValueError(
-            f"Treaty {treaty.treaty_id} quota_share_pct={pct} must be in [0, 1]."
-        )
+    pct = validate_share(treaty.treaty_id, "quota_share_pct", treaty.quota_share_pct)
     if inputs.gross_cash_flows is None:
         raise ValueError(
             "QuotaShareInput.gross_cash_flows is required — run the "
             "projection engine (core.seriatim) first."
         )
 
-    gross = inputs.gross_cash_flows
-    ceded_policies: list[PolicyCashFlows] = []
-    retained_policies: list[PolicyCashFlows] = []
-    for policy_cf in gross.policies:
-        ceded_policies.append(
-            PolicyCashFlows(
-                policy_id=policy_cf.policy_id,
-                records=[_scale_record(r, pct) for r in policy_cf.records],
-            )
-        )
-        retained_policies.append(
-            PolicyCashFlows(
-                policy_id=policy_cf.policy_id,
-                records=[_scale_record(r, 1.0 - pct) for r in policy_cf.records],
-            )
-        )
-
-    return QuotaShareOutput(
-        ceded_cash_flows=GrossCashFlows(
-            valuation_date=gross.valuation_date, policies=ceded_policies
-        ),
-        retained_cash_flows=GrossCashFlows(
-            valuation_date=gross.valuation_date, policies=retained_policies
-        ),
-    )
-
-
-def _scale_record(record: MygaCashFlowRecord, share: float) -> MygaCashFlowRecord:
-    """Copy of ``record`` with every monetary field scaled by ``share``."""
-    scaled = {field: getattr(record, field) * share for field in _MONETARY_FIELDS}
-    return record.model_copy(update=scaled)
+    ceded, retained = split_proportional(inputs.gross_cash_flows, pct)
+    return QuotaShareOutput(ceded_cash_flows=ceded, retained_cash_flows=retained)

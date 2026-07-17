@@ -123,13 +123,15 @@ def test_unknown_treaty_id_raises(
         )
 
 
-def test_phase2_treaty_type_raises(
+def test_treaty_missing_terms_raises(
     sample_assumption_set: AssumptionSet, sample_treaty: ReinsuranceTreaty
 ):
+    """A routed treaty with incomplete terms fails its engine's validation:
+    the QS fixture retyped to ModCo carries no coinsurance_pct."""
     modco = sample_treaty.model_copy(
         update={"treaty_type": ReinsuranceTreatyType.MODCO}
     )
-    with pytest.raises(NotImplementedError, match="MODCO"):
+    with pytest.raises(ValueError, match="coinsurance_pct"):
         calculate(
             ReinsuranceApplicationInput(
                 assumption_set=sample_assumption_set,

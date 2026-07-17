@@ -21,7 +21,7 @@
 | **Aggregation** | `core/aggregation.py` | ✅ Complete | 5 | Cohort → segment → legal-entity rollup, framework-partitioned |
 | **Discount / yield curve** | `core/discount.py` | ✅ Complete | 17 | Linear/cubic-spline zero curve, flat extrapolation, DF helpers |
 | **Quota-share reinsurance** | `reinsurance/quota_share.py` | ✅ Complete | 6 | Proportional ceded/retained split of all monetary fields |
-| **Reinsurance application** | `reinsurance/application.py` | ✅ Complete | 4 | Routes policy-treaty pairs via `reinsurance_treaty_id`; Phase 2 types raise |
+| **Reinsurance application** | `reinsurance/application.py` | ✅ Complete | 4 | Routes treaty groups (group-level, so XL attaches on aggregate claims) to all six treaty-type engines |
 | **Asset ledger** | `assets/ledger.py` | ✅ Complete | 4 | DuckDB-backed upsert + read-back of `AssetRecord` rows |
 | **Asset valuation** | `assets/valuation.py` | ✅ Complete | 6 | Carrying values per framework: STAT book (non-admitted → 0), LDTI HTM/AFS, FV market, EBS post-haircut |
 | **BEL** | `standards/bel.py` | ✅ Complete | 8 | Discounts liability outflows at risk-free curve; ceded stream wired → net = gross − ceded |
@@ -33,11 +33,11 @@
 | **NAIC RBC** | `capital/rbc.py` | ✅ Complete | 7 | Factor-based C-1…C-4, covariance, ACL; ratio when TAC supplied |
 | **Bermuda ECR** | `capital/ecr.py` | 🔴 Stub | — | Enhanced Capital Requirement |
 | **Stochastic capital** | `capital/stochastic.py` | 🔴 Stub | — | Scenario-driven stochastic capital |
-| **Coinsurance** | `reinsurance/coinsurance.py` | 🔴 Phase 2 | — | |
-| **ModCo** | `reinsurance/modco.py` | 🔴 Phase 2 | — | |
-| **Funds Withheld** | `reinsurance/funds_withheld.py` | 🔴 Phase 2 | — | |
-| **YRT** | `reinsurance/yrt.py` | 🔴 Phase 2 | — | |
-| **Excess of Loss** | `reinsurance/excess_of_loss.py` | 🔴 Phase 2 | — | |
+| **Coinsurance** | `reinsurance/coinsurance.py` | ✅ Complete | 2 | Proportional split at `coinsurance_pct`; initial asset transfer reported |
+| **ModCo** | `reinsurance/modco.py` | ✅ Complete | 2 | Proportional benefits; ceded interest restated at ModCo rate on ceded AV; B36 flagged |
+| **Funds Withheld** | `reinsurance/funds_withheld.py` | ✅ Complete | 1 | Coinsurance split + FW account rolled at contractual rate net of ceded benefits |
+| **YRT** | `reinsurance/yrt.py` | ✅ Complete | 1 | Mortality-only: cedes death benefits on ROP policies (ROAV → no NAR) |
+| **Excess of Loss** | `reinsurance/excess_of_loss.py` | ✅ Complete | 3 | Annual-aggregate death-claims layer (attachment/limit), pro-rata allocation |
 | **FIA projection** | `core/projections/fia.py` | 🔴 Phase 2 | — | |
 | **SPIA projection** | `core/projections/spia.py` | 🔴 Phase 2 | — | |
 | **VA projection** | `core/projections/va.py` | 🔴 Phase 3 | — | |
@@ -69,8 +69,9 @@
 | EBS | `test_standards/test_ebs.py` | 12 | Illiquidity premium, haircut on ceded, SBA defeasance / mismatch / spread cap / default cost / eligibility |
 | Assets | `test_assets/test_assets.py` | 10 | Ledger round-trip/upsert, per-framework carrying values |
 | Product alignment | `test_core/test_product_alignment.py` | 8 | FW basis (MYG vs MaxRate), MGSV floor in engine + CARVM |
-| Remaining stubs | `test_core/` etc. | Stub | `NotImplementedError` guards (ECR, stochastic capital, Phase 2 reinsurance/products) |
-| **Total** | | **249** | |
+| Phase 2 treaties | `test_reinsurance/test_phase2_treaties.py` | 11 | Coinsurance/ModCo/FWH/YRT/XL mechanics + group-level routing |
+| Remaining stubs | `test_core/` etc. | Stub | `NotImplementedError` guards (risk transfer, ECR, stochastic capital, FIA/SPIA/VA/ULSG) |
+| **Total** | | **260** | |
 
 ---
 
@@ -178,15 +179,41 @@ All six Phase 1 reserve frameworks are now live end-to-end.
 
 ---
 
-### Priority 1 — Phase 2 kickoff (after MYGA validation)
+### ✅ Done (2026-07-17) — Phase 2 reinsurance suite
+
+- ~~Coinsurance / ModCo / FWH / YRT / XL~~ — all five treaty-type engines live
+  on a shared proportional core (`reinsurance/proportional.py`):
+  - Coinsurance: proportional split at `coinsurance_pct`; initial asset
+    transfer (ceded share of first-period AV) reported for asset accounting.
+  - ModCo: benefits proportional; ceded `interest_credited` restated at
+    `modco_interest_rate` on the ceded AV — the net-settlement ModCo interest.
+    DIG B36 embedded-derivative exposure flagged, not bifurcated.
+  - Funds withheld: coinsurance split plus a per-policy FW account seeded at
+    the ceded AV share, accreting at `funds_withheld_rate`, paying down as
+    ceded benefits settle; ending balances reported for collateral/credit.
+  - YRT: mortality-only — cedes `quota_share_pct` of death benefits on ROP
+    policies; ROAV carries no NAR so nothing cedes (ASSUMPTION REQUIRED:
+    strict NAR basis once the per-policy AV path is exposed).
+  - XL: annual-aggregate death-claims layer between `xl_attachment` and
+    `xl_limit`, allocated pro-rata back to policies.
+- `reinsurance/application.py` v0.2.0 — group-level routing across all six
+  types (XL attaches on the treaty group's aggregate claims). 11 new tests.
+- `reinsurance/risk_transfer.py` stays stubbed deliberately: ERD and
+  reasonable-possibility need premium/expense streams the cash-flow record
+  doesn't carry yet.
+
+---
+
+### Priority 1 — next work items
 
 **1. Product engines: `core/projections/fia.py`, `core/projections/spia.py`**
 
-**2. Phase 2 reinsurance: coinsurance, ModCo, funds withheld, YRT, XL**
-
-**3. API assumptions / data routers** — CRUD for assumption sets, seriatim,
+**2. API assumptions / data routers** — CRUD for assumption sets, seriatim,
 assets (wire `assets/ledger.py` in), treaties; feed real asset lists and TAC
 into the RBC step.
+
+**3. Premium / expense streams on the cash-flow record** — unlocks ceding
+commissions, YRT/XL premiums, risk-transfer testing (ERD), and a real C-4.
 
 ---
 
@@ -238,7 +265,9 @@ into the RBC step.
 
 ### Phase 2 Backlog (after MYGA validation)
 
-- Reinsurance: coinsurance, ModCo, funds withheld, YRT, XL
+- Reinsurance refinements: strict YRT NAR basis, YRT/XL premiums, ceding
+  commissions, treaty effective/termination windows, B36 bifurcation,
+  risk-transfer testing (needs premium streams)
 - Product engines: FIA, SPIA
 - Frontend components (dashboard, results tables, scenario comparison charts)
 - API: assumptions / data routers (CRUD for assumption sets, seriatim, assets, treaties)
@@ -262,5 +291,5 @@ into the RBC step.
 | Phase | Focus | Status |
 |-------|-------|--------|
 | **Phase 1** | MYGA + Quota Share; all 6 reserve frameworks; NAIC RBC | ✅ Complete — all 6 frameworks + QS + RBC + REST live (placeholder assumptions flagged `ASSUMPTION REQUIRED` throughout) |
-| **Phase 2** | PRT, SPIA, FIA; Coinsurance, ModCo, FWH, YRT, XL | 🔴 Not started |
+| **Phase 2** | PRT, SPIA, FIA; Coinsurance, ModCo, FWH, YRT, XL | 🔶 In progress — full reinsurance suite live; product engines pending |
 | **Phase 3** | VA, ULSG; Bermuda ECR; stochastic capital | 🔴 Not started |

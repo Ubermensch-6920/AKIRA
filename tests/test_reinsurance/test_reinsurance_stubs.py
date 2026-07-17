@@ -45,8 +45,12 @@ def test_quota_share_requires_cash_flows(sample_treaty: ReinsuranceTreaty) -> No
         (excess_of_loss, excess_of_loss.ExcessOfLossInput),
     ],
 )
-def test_treaty_stubs(module, input_cls, sample_treaty: ReinsuranceTreaty) -> None:
-    with pytest.raises(NotImplementedError):
+def test_treaty_engines_validate_inputs(
+    module, input_cls, sample_treaty: ReinsuranceTreaty
+) -> None:
+    """Every Phase 2 engine is implemented — a mismatched treaty type (the
+    fixture is quota-share) or missing cash flows is a usage error."""
+    with pytest.raises(ValueError):
         module.calculate(input_cls(treaty=sample_treaty))
 
 
