@@ -1,5 +1,7 @@
 """Withdrawal, surrender charge, and MVA rate tables for MYGA products."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -32,8 +34,17 @@ class SurrenderChargeSchedule(BaseModel):
 
 
 class FreeWithdrawalConfig(BaseModel):
-    """Annual free withdrawal allowance — no surrender charge or MVA applied."""
+    """Annual free withdrawal allowance — no surrender charge or MVA applied.
 
+    ``basis`` follows the product documents: Athene MYG (doc 76009) frees
+    ``annual_free_pct`` (10%) of accumulated value each contract year;
+    Athene MaxRate (doc 76047) frees the interest earned — the fixed
+    strategy rate times the anniversary accumulated value — in which case
+    ``annual_free_pct`` is ignored and the credited rate is supplied by
+    the caller.
+    """
+
+    basis: Literal["PCT_AV", "INTEREST_EARNED"] = "PCT_AV"
     annual_free_pct: float = 0.10
     applies_from_year: int = 1
 

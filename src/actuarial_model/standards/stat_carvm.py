@@ -9,10 +9,13 @@ Method (Phase 1):
   CARVM reserve = greatest present value of future *guaranteed* benefits.
   For a MYGA the candidate benefit at each future month m is the cash
   surrender value — guaranteed AV accumulated at ``guaranteed_rate`` less
-  the surrender charge for that policy year — and, at the end of the
-  guarantee period, the full account value (no charge). Each candidate is
-  discounted at the statutory valuation rate; the reserve is the maximum.
-  Evaluating at t=0 makes the current CSV a natural floor.
+  the surrender charge for that policy year, floored at the Minimum
+  Guaranteed Surrender Value (nonforfeiture: ``mgsv_premium_pct`` of
+  premium accumulated at ``nonforfeiture_rate``) — and, at the end of
+  the guarantee period, the full account value (no charge, same MGSV
+  floor). Each candidate is discounted at the statutory valuation rate;
+  the reserve is the maximum. Evaluating at t=0 makes the current CSV a
+  natural floor.
 
   Unlike BEL, no best-estimate lapse or mortality assumptions enter the
   calculation: CARVM assumes the policyholder elects the benefit pattern
@@ -133,12 +136,17 @@ def _policy_carvm_reserve(
     """
     months_to_maturity = _months_between(valuation_date, policy.guarantee_end_date)
 
-    # Matured or maturing policy: reserve is the full account value.
+    # Matured or maturing policy: reserve is the full account value
+    # (still subject to the nonforfeiture floor).
     if months_to_maturity <= 0:
+        matured_value = max(
+            policy.account_value,
+            policy.mgsv_at(_months_between(policy.issue_date, valuation_date)),
+        )
         return PolicyCarvmDetail(
             policy_id=policy.policy_id,
-            reserve=policy.account_value,
-            csv_at_valuation=policy.account_value,
+            reserve=matured_value,
+            csv_at_valuation=matured_value,
             greatest_pv_month=0,
             months_to_maturity=0,
         )
@@ -146,9 +154,11 @@ def _policy_carvm_reserve(
     monthly_growth = (1.0 + policy.guaranteed_rate) ** (1.0 / 12.0)
     monthly_discount = (1.0 + i_val) ** (-1.0 / 12.0)
 
-    # t = 0: current CSV is the floor.
-    csv_now = policy.account_value * (
-        1.0 - _surrender_charge_rate(policy, schedule, valuation_date)
+    # t = 0: current CSV (with its nonforfeiture floor) is the floor.
+    csv_now = max(
+        policy.account_value
+        * (1.0 - _surrender_charge_rate(policy, schedule, valuation_date)),
+        policy.mgsv_at(_months_between(policy.issue_date, valuation_date)),
     )
     best_pv = csv_now
     best_month = 0
@@ -159,12 +169,13 @@ def _policy_carvm_reserve(
         av *= monthly_growth
         df *= monthly_discount
         benefit_date = _add_months(valuation_date, month)
+        mgsv = policy.mgsv_at(_months_between(policy.issue_date, benefit_date))
 
         if month == months_to_maturity:
-            benefit = av  # maturity: full AV, no surrender charge
+            benefit = max(av, mgsv)  # maturity: full AV, no surrender charge
         else:
             sc_rate = _surrender_charge_rate(policy, schedule, benefit_date)
-            benefit = av * (1.0 - sc_rate)
+            benefit = max(av * (1.0 - sc_rate), mgsv)
 
         pv = benefit * df
         if pv > best_pv:

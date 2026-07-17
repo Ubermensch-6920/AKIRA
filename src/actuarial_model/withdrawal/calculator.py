@@ -18,6 +18,7 @@ class WithdrawalCalculator:
         accumulated_value: float,
         config: FreeWithdrawalConfig,
         policy_year: int,
+        credited_rate: float = 0.0,
     ) -> float:
         """Annual free withdrawal allowance for the policy.
 
@@ -25,12 +26,18 @@ class WithdrawalCalculator:
             accumulated_value: Policy account value at start of period.
             config: Free withdrawal configuration.
             policy_year: Current policy year (1-based).
+            credited_rate: The contract's fixed strategy rate — used only
+                when ``config.basis`` is ``INTEREST_EARNED`` (MaxRate),
+                where the free amount is the interest earned rather than
+                a flat percentage of accumulated value.
 
         Returns:
             Maximum amount that can be withdrawn without charge.
         """
         if policy_year < config.applies_from_year:
             return 0.0
+        if config.basis == "INTEREST_EARNED":
+            return accumulated_value * credited_rate
         return accumulated_value * config.annual_free_pct
 
     @staticmethod

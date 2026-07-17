@@ -32,11 +32,15 @@ In addition to the base fields:
 | `guarantee_end_date`           | `date`    |                                |
 | `surrender_charge_schedule_id` | `str`     | FK to surrender-charge tables  |
 | `has_mva`                      | `bool`    | Market value adjustment flag   |
-| `death_benefit_basis`          | `str`     | `ROAV` / `ROP` / `OTHER`       |
-| `free_withdrawal_pct`          | `float`   | Annual, decimal (default 10%)  |
+| `death_benefit_basis`          | `str`     | `ROAV` / `ROP` / `OTHER` — Athene MYG & MaxRate pay full AV (`ROAV`) |
+| `free_withdrawal_basis`        | `str`     | `PCT_AV` (MYG: 10% of AV, doc 76009) / `INTEREST_EARNED` (MaxRate: strategy rate × AV, doc 76047) |
+| `free_withdrawal_pct`          | `float`   | Annual, decimal (default 10%); ignored under `INTEREST_EARNED` |
+| `mgsv_premium_pct`             | `float`   | Nonforfeiture: MGSV premium percentage (default 87.5%) |
+| `nonforfeiture_rate`           | `float`   | MGSV accumulation rate — set from the contract (SNFL corridor 1%–3%) |
 | `reinsurance_treaty_id`        | `str?`    | FK to `ReinsuranceTreaty`      |
 
-ASSUMPTION REQUIRED: confirm full MYGA field list from product spec.
+Field list aligned with the Athene product documents backing the embedded
+surrender schedules (MYG — doc 76009; MaxRate — doc 76047).
 
 ## Asset — `AssetRecord`
 

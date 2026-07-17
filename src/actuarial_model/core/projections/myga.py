@@ -202,15 +202,23 @@ class MygaProjectionEngine:
             )
             sc_per_policy = av_mid * sc_rate
             # Phase 1: no interest-rate path → MVA = 0 throughout
-            net_sv_per_policy = av_mid - sc_per_policy
+            # Nonforfeiture: cash surrender value cannot fall below the MGSV
+            # (per the product's certificate of disclosure).
+            mgsv = policy.mgsv_at(
+                _months_between(policy.issue_date, row.period_end_date)
+            )
+            net_sv_per_policy = max(av_mid - sc_per_policy, mgsv)
             surrender_benefits = lapse_dec * net_sv_per_policy
-            surrender_charge = lapse_dec * sc_per_policy
+            # Charge actually collected: zero once the MGSV floor binds.
+            surrender_charge = lapse_dec * max(av_mid - net_sv_per_policy, 0.0)
             mva_adjustment = 0.0
 
             # ── Partial withdrawals ───────────────────────────────────────────
-            # A fraction of in-force policyholders takes a free withdrawal of
-            # free_withdrawal_pct × AV each period. This drains AV but does NOT
-            # terminate the policy, so it never touches the inforce count.
+            # A fraction of in-force policyholders takes a free withdrawal each
+            # period. The corridor follows the product's free-withdrawal basis:
+            # 10% of AV for MYG (PCT_AV), interest earned for MaxRate
+            # (INTEREST_EARNED). Drains AV but does NOT terminate the policy,
+            # so it never touches the inforce count.
             period_w_rate = 0.0
             if withdrawal_cfg is not None:
                 annual_w_rate = withdrawal_cfg.partial_withdrawal.rate_at_duration(
@@ -219,7 +227,7 @@ class MygaProjectionEngine:
                 period_w_rate = LapseDecrementCalculator.annual_to_periodic(
                     annual_w_rate, frequency
                 )
-            withdrawal_drain = av_mid * policy.free_withdrawal_pct * period_w_rate
+            withdrawal_drain = av_mid * policy.free_withdrawal_fraction() * period_w_rate
             partial_withdrawals = inforce_bop * withdrawal_drain
 
             # ── Maturity: pay out remaining AV at guarantee end ───────────────
@@ -267,6 +275,11 @@ def _resolve_surrender_schedule(
         return _SURRENDER_REPO.get(policy.surrender_charge_schedule_id)
     except ValueError:
         return None
+
+
+def _months_between(start: date, end: date) -> int:
+    """Whole calendar months from ``start`` to ``end``."""
+    return (end.year - start.year) * 12 + (end.month - start.month)
 
 
 def calculate(inputs: MygaProjectionInput) -> MygaProjectionOutput:

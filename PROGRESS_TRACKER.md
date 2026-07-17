@@ -1,6 +1,6 @@
 # AKIRA — Development Progress Tracker
 
-*Last updated: 2026-07-14*
+*Last updated: 2026-07-17*
 
 ---
 
@@ -186,6 +186,21 @@ All six Phase 1 reserve frameworks are now live end-to-end.
 **3. API assumptions / data routers** — CRUD for assumption sets, seriatim,
 assets (wire `assets/ledger.py` in), treaties; feed real asset lists and TAC
 into the RBC step.
+
+---
+
+### ✅ Done (2026-07-17) — Product-document alignment (Athene MYG 76009 / MaxRate 76047)
+
+- `MygaPolicyState.free_withdrawal_basis` — MYG frees 10% of AV per contract
+  year (`PCT_AV`); MaxRate frees the interest earned — strategy rate × AV
+  (`INTEREST_EARNED`). Wired through the MYGA engine's partial-withdrawal
+  corridor and `WithdrawalCalculator.free_withdrawal_amount`.
+- Minimum Guaranteed Surrender Value (nonforfeiture) — CSV floored at
+  `mgsv_premium_pct` (87.5%) of premium accumulated at `nonforfeiture_rate`
+  (ASSUMPTION REQUIRED: contract rate; SNFL corridor 1%–3%). Applied to
+  projected surrender benefits in the MYGA engine (charge collected floors at
+  zero once the MGSV binds) and to every CARVM CSV / maturity candidate.
+- Death benefit confirmed vs product docs: full AV, no charge/MVA (`ROAV`). 8 tests.
 
 ---
 
