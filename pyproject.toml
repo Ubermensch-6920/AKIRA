@@ -7,13 +7,15 @@ name = "actuarial_model"
 version = "0.1.0"
 description = "Multi-framework actuarial reserving and capital model (MYGA-first)."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "Proprietary" }
 authors = [{ name = "AKIRA Actuarial" }]
 dependencies = [
-    "pandas>=2.2,<3.0",
-    "numpy>=1.26,<3.0",
-    "scipy>=1.12,<2.0",
+    "gaspatchio>=0.9,<0.10",  # projection engine (pins its own polars)
+    "polars",
+    "loguru>=0.7",
+    "numpy>=1.26,<2.6",
+    "pyarrow>=15.0",
     "duckdb>=1.0,<2.0",
     "fastapi>=0.110,<1.0",
     "uvicorn[standard]>=0.27,<1.0",
@@ -28,6 +30,7 @@ dev = [
     "ruff>=0.4,<1.0",
     "mypy>=1.10,<2.0",
     "httpx>=0.27,<1.0",
+    "types-python-dateutil",
 ]
 
 [tool.setuptools.packages.find]
@@ -46,7 +49,7 @@ pythonpath = ["src"]
 # ── ruff ─────────────────────────────────────────────────────────────────
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["src", "tests"]
 extend-exclude = ["frontend", "data"]
 
@@ -73,7 +76,7 @@ ignore = [
 
 # ── mypy ─────────────────────────────────────────────────────────────────
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 mypy_path = "src"
 packages = ["actuarial_model"]
 strict = false

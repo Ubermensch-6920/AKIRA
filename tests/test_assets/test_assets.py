@@ -87,19 +87,20 @@ def test_ldti_htm_uses_amortized_cost(
     assert _value(sample_assumption_set, Framework.LDTI, sample_asset) == 1_010_000.0
 
 
-def test_fair_value_frameworks_use_market(
+def test_us_gaap_fair_value_uses_market(
     sample_assumption_set: AssumptionSet, sample_asset: AssetRecord
 ):
     assert _value(sample_assumption_set, Framework.FAS157, sample_asset) == 1_010_000.0
-    assert _value(sample_assumption_set, Framework.BEL, sample_asset) == 1_010_000.0
 
 
-def test_ebs_uses_post_haircut_value(
-    sample_assumption_set: AssumptionSet, sample_asset: AssetRecord
+@pytest.mark.parametrize("framework", [Framework.EBS, Framework.BEL])
+def test_ebs_basis_uses_post_haircut_value(
+    framework: Framework, sample_assumption_set: AssumptionSet, sample_asset: AssetRecord
 ):
-    assert _value(sample_assumption_set, Framework.EBS, sample_asset) == 1_005_000.0
+    # BEL reports under the EBS basis, so it shares the EBS asset view.
+    assert _value(sample_assumption_set, framework, sample_asset) == 1_005_000.0
     no_ebs_value = sample_asset.model_copy(update={"market_value_ebs": None})
-    assert _value(sample_assumption_set, Framework.EBS, no_ebs_value) == 1_010_000.0
+    assert _value(sample_assumption_set, framework, no_ebs_value) == 1_010_000.0
 
 
 def test_total_carrying_value(

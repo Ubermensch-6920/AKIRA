@@ -1,31 +1,22 @@
 """Runs router — submit, list, and inspect valuation runs.
 
-POST /runs executes the Phase 1 pipeline synchronously:
-
-    seriatim projection → reinsurance application → framework reserves
-    (BEL / CARVM / VM-22 / LDTI / FAS 157 / EBS) → aggregation → NAIC RBC
-
-and persists the run record plus every result row to the DuckDB store,
-where GET /results can query them back. Supplementary results (LDTI DAC,
-EBS risk margin) are persisted and returned but excluded from the
-reserve aggregation — DAC is an asset and the risk margin is already
-inside the EBS technical provisions.
+POST /runs executes :func:`actuarial_model.pipeline.run_valuation`
+synchronously — gaspatchio projection per basis assumption block →
+reinsurance → STAT / US GAAP / LDTI / EBS measures → aggregation → RBC —
+and persists the run record, every result row (tagged with its basis), and
+the per-policy results to the DuckDB store. Supplementary results (LDTI DAC,
+EBS risk margin) are persisted and returned but excluded from aggregation.
 """
 
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 
-from ...assumptions.enums import Framework
 from ...assumptions.sets import AssumptionSet
-from ...capital import rbc
-from ...core import aggregation, seriatim
-from ...models.results import ReserveResult
 from ...models.runs import ValuationRun
-from ...reinsurance import application
-from ...standards import bel, ebs, fas157, ldti, stat_carvm, stat_vm22
+from ...pipeline import ValuationOutput, run_valuation
 from ...utils.ids import new_assumption_set_id, new_run_id
-from ..schemas.runs import RunRequest, RunResponse
+from ..schemas.runs import BasisSummary, RunRequest, RunResponse
 from ..store import get_store
 
 router = APIRouter()
@@ -65,7 +56,19 @@ def submit_run(request: RunRequest) -> RunResponse:
     store.save_run(run)
 
     try:
-        response = _execute_pipeline(request, assumption_set, run, run_id)
+        output = run_valuation(
+            assumption_set=assumption_set,
+            valuation_date=request.valuation_date,
+            policies=request.policies,
+            curve_points=request.curve_points,
+            frameworks=request.frameworks,
+            treaties=request.treaties,
+            assets=request.assets,
+            total_adjusted_capital=request.total_adjusted_capital,
+            run_id=run_id,
+            projection_horizon_years=request.projection_horizon_years,
+        )
+        _persist(run_id, output)
     except Exception as exc:
         run.status = "FAILED"
         run.completed_at = datetime.now(UTC)
@@ -75,8 +78,20 @@ def submit_run(request: RunRequest) -> RunResponse:
     run.status = "COMPLETE"
     run.completed_at = datetime.now(UTC)
     store.save_run(run)
-    response.run = run
-    return response
+    return RunResponse(
+        run=run,
+        bases={
+            basis.value: BasisSummary(
+                reserve_results=[r.model_dump(mode="json") for r in result.reserve_results()],
+                capital_results=[c.model_dump(mode="json") for c in result.capital],
+            )
+            for basis, result in output.bases.items()
+        },
+        reserve_results=[r.model_dump(mode="json") for r in output.reserve_results],
+        capital_results=[c.model_dump(mode="json") for c in output.capital_results],
+        aggregation=output.aggregation.model_dump(mode="json"),
+        projection_runs=output.projection_runs,
+    )
 
 
 def _default_assumption_set(request: RunRequest) -> AssumptionSet:
@@ -90,182 +105,38 @@ def _default_assumption_set(request: RunRequest) -> AssumptionSet:
     )
 
 
-def _execute_pipeline(
-    request: RunRequest,
-    assumption_set: AssumptionSet,
-    run: ValuationRun,
-    run_id: str,
-) -> RunResponse:
+def _persist(run_id: str, output: ValuationOutput) -> None:
     store = get_store()
-
-    # ── Projection ───────────────────────────────────────────────────────
-    seriatim_out = seriatim.calculate(
-        seriatim.SeriatimInput(
-            assumption_set=assumption_set,
-            policies=list(request.policies),
-            valuation_date=request.valuation_date,
-            run_id=run_id,
-            assets=request.assets,
-        )
-    )
-    gross_cf = seriatim_out.cash_flows
-
-    # ── Reinsurance ──────────────────────────────────────────────────────
-    ceded_cf = None
-    if request.treaties:
-        reins_out = application.calculate(
-            application.ReinsuranceApplicationInput(
-                assumption_set=assumption_set,
-                treaties=request.treaties,
-                gross_cash_flows=gross_cf,
-                policies=request.policies,
-            )
-        )
-        ceded_cf = reins_out.ceded_cash_flows
-
-    # ── Framework reserves ───────────────────────────────────────────────
-    # Primary results feed the aggregation; supplementary results (DAC,
-    # EBS risk margin) are persisted and returned alongside them.
-    reserve_results: list[ReserveResult] = []
-    supplementary_results: list[ReserveResult] = []
-    if Framework.BEL in request.frameworks:
-        reserve_results.append(
-            bel.calculate(
-                bel.BelInput(
-                    assumption_set=assumption_set,
-                    gross_cash_flows=gross_cf,
-                    ceded_cash_flows=ceded_cf,
-                    policies=request.policies,
-                    valuation_date=request.valuation_date,
-                    curve_points=request.curve_points,
-                    run_id=run_id,
-                )
-            ).reserve_result
-        )
-    if Framework.STAT_CARVM in request.frameworks:
-        reserve_results.append(
-            stat_carvm.calculate(
-                stat_carvm.StatCarvmInput(
-                    assumption_set=assumption_set,
-                    gross_cash_flows=gross_cf,
-                    policies=request.policies,
-                    valuation_date=request.valuation_date,
-                    run_id=run_id,
-                )
-            ).reserve_result
-        )
-    if Framework.STAT_VM22 in request.frameworks:
-        reserve_results.append(
-            stat_vm22.calculate(
-                stat_vm22.StatVm22Input(
-                    assumption_set=assumption_set,
-                    gross_cash_flows=gross_cf,
-                    ceded_cash_flows=ceded_cf,
-                    policies=request.policies,
-                    valuation_date=request.valuation_date,
-                    curve_points=request.curve_points,
-                    run_id=run_id,
-                )
-            ).reserve_result
-        )
-    if Framework.LDTI in request.frameworks:
-        ldti_out = ldti.calculate(
-            ldti.LdtiInput(
-                assumption_set=assumption_set,
-                gross_cash_flows=gross_cf,
-                ceded_cash_flows=ceded_cf,
-                policies=request.policies,
-                valuation_date=request.valuation_date,
-                curve_points=request.curve_points,
-                run_id=run_id,
-            )
-        )
-        reserve_results.append(ldti_out.lfpb_result)
-        supplementary_results.append(ldti_out.dac_result)
-    if Framework.FAS157 in request.frameworks:
-        reserve_results.append(
-            fas157.calculate(
-                fas157.Fas157Input(
-                    assumption_set=assumption_set,
-                    gross_cash_flows=gross_cf,
-                    ceded_cash_flows=ceded_cf,
-                    policies=request.policies,
-                    valuation_date=request.valuation_date,
-                    curve_points=request.curve_points,
-                    run_id=run_id,
-                )
-            ).reserve_result
-        )
-    if Framework.EBS in request.frameworks:
-        ebs_out = ebs.calculate(
-            ebs.EbsInput(
-                assumption_set=assumption_set,
-                gross_cash_flows=gross_cf,
-                ceded_cash_flows=ceded_cf,
-                policies=request.policies,
-                valuation_date=request.valuation_date,
-                curve_points=request.curve_points,
-                run_id=run_id,
-            )
-        )
-        reserve_results.append(ebs_out.technical_provisions)
-        supplementary_results.append(ebs_out.risk_margin)
-
-    for result in reserve_results + supplementary_results:
+    for result in output.reserve_results:
         store.save_result(
             run_id,
             result_type="RESERVE",
             grain="RUN_TOTAL",
+            basis=result.metadata.basis.value,
             framework=result.metadata.framework.value,
             payload=result.model_dump(mode="json"),
         )
-
-    # ── Aggregation ──────────────────────────────────────────────────────
-    agg_out = aggregation.calculate(
-        aggregation.AggregationInput(seriatim_results=reserve_results)
-    )
-    aggregation_payload = agg_out.model_dump(mode="json")
     for grain, results in (
-        ("COHORT", agg_out.by_cohort),
-        ("SEGMENT", agg_out.by_segment),
-        ("LEGAL_ENTITY", agg_out.by_legal_entity),
+        ("COHORT", output.aggregation.by_cohort),
+        ("SEGMENT", output.aggregation.by_segment),
+        ("LEGAL_ENTITY", output.aggregation.by_legal_entity),
     ):
         for result in results:
             store.save_result(
                 run_id,
                 result_type="RESERVE_AGGREGATE",
                 grain=grain,
+                basis=result.metadata.basis.value,
                 framework=result.metadata.framework.value,
                 payload=result.model_dump(mode="json"),
             )
-
-    # ── Capital ──────────────────────────────────────────────────────────
-    capital_results = []
-    if Framework.NAIC_RBC in request.frameworks:
-        rbc_out = rbc.calculate(
-            rbc.RbcInput(
-                assumption_set=assumption_set,
-                reserve_results=reserve_results,
-                assets=request.assets,
-                valuation_date=request.valuation_date,
-                total_adjusted_capital=request.total_adjusted_capital,
-                run_id=run_id,
-            )
-        )
-        capital_results.append(rbc_out.capital_result)
+    for capital in output.capital_results:
         store.save_result(
             run_id,
             result_type="CAPITAL",
             grain="LEGAL_ENTITY",
-            framework=Framework.NAIC_RBC.value,
-            payload=rbc_out.capital_result.model_dump(mode="json"),
+            basis=capital.metadata.basis.value,
+            framework=capital.metadata.framework.value,
+            payload=capital.model_dump(mode="json"),
         )
-
-    return RunResponse(
-        run=run,
-        reserve_results=[
-            r.model_dump(mode="json") for r in reserve_results + supplementary_results
-        ],
-        capital_results=[c.model_dump(mode="json") for c in capital_results],
-        aggregation=aggregation_payload,
-    )
+    store.save_policy_results(run_id, output.policy_results())

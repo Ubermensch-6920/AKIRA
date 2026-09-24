@@ -45,33 +45,33 @@ def validate_assumption_set(assumption_set: AssumptionSet) -> list[ValidationIss
     issues: list[ValidationIssue] = []
 
     # FAS157_COC_RANGE — cost-of-capital rate should be between 1 % and 20 %
-    coc = assumption_set.fas157.cost_of_capital_rate
+    coc = assumption_set.us_gaap.fas157.cost_of_capital_rate
     if not (0.01 <= coc <= 0.20):
         issues.append(
             ValidationIssue(
                 severity="warning",
                 code="FAS157_COC_RANGE",
-                message=f"fas157.cost_of_capital_rate={coc:.4f} is outside the typical range [0.01, 0.20].",
-                path="fas157.cost_of_capital_rate",
+                message=f"us_gaap.fas157.cost_of_capital_rate={coc:.4f} is outside the typical range [0.01, 0.20].",
+                path="us_gaap.fas157.cost_of_capital_rate",
             )
         )
 
     # EBS_COC_RANGE — same check for EBS
-    coc_ebs = assumption_set.ebs.cost_of_capital_rate
+    coc_ebs = assumption_set.ebs.technical_provisions.cost_of_capital_rate
     if not (0.01 <= coc_ebs <= 0.20):
         issues.append(
             ValidationIssue(
                 severity="warning",
                 code="EBS_COC_RANGE",
-                message=f"ebs.cost_of_capital_rate={coc_ebs:.4f} is outside the typical range [0.01, 0.20].",
-                path="ebs.cost_of_capital_rate",
+                message=f"ebs.technical_provisions.cost_of_capital_rate={coc_ebs:.4f} is outside the typical range [0.01, 0.20].",
+                path="ebs.technical_provisions.cost_of_capital_rate",
             )
         )
 
     # BEL_DISCOUNT_MISMATCH — US_TREASURY BEL curve is inconsistent with BMA illiquidity premium
     if (
-        assumption_set.bel.risk_free_curve is RiskFreeCurve.US_TREASURY
-        and assumption_set.ebs.illiquidity_premium is EbsIlliquidityPremium.BMA_PUBLISHED
+        assumption_set.ebs.bel.risk_free_curve is RiskFreeCurve.US_TREASURY
+        and assumption_set.ebs.technical_provisions.illiquidity_premium is EbsIlliquidityPremium.BMA_PUBLISHED
     ):
         issues.append(
             ValidationIssue(
@@ -82,7 +82,7 @@ def validate_assumption_set(assumption_set: AssumptionSet) -> list[ValidationIss
                     "ebs.illiquidity_premium=BMA_PUBLISHED; BMA published spreads "
                     "are calibrated to OIS/swap curves, not Treasuries."
                 ),
-                path="bel.risk_free_curve",
+                path="ebs.bel.risk_free_curve",
             )
         )
 
@@ -100,8 +100,8 @@ def validate_assumption_set(assumption_set: AssumptionSet) -> list[ValidationIss
 
     # VM22_CTE_SCENARIO_MISMATCH — loading stochastic scenarios but only computing DR is wasteful
     if (
-        assumption_set.stat_vm22.scenario_set is Vm22ScenarioSet.NAIC_10K
-        and assumption_set.stat_vm22.reserve_component is Vm22Component.DR_ONLY
+        assumption_set.stat.vm22.scenario_set is Vm22ScenarioSet.NAIC_10K
+        and assumption_set.stat.vm22.reserve_component is Vm22Component.DR_ONLY
     ):
         issues.append(
             ValidationIssue(
@@ -111,7 +111,7 @@ def validate_assumption_set(assumption_set: AssumptionSet) -> list[ValidationIss
                     "stat_vm22.scenario_set=NAIC_10K but reserve_component=DR_ONLY; "
                     "the stochastic scenario set will be loaded but not used."
                 ),
-                path="stat_vm22.reserve_component",
+                path="stat.vm22.reserve_component",
             )
         )
 

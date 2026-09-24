@@ -6,10 +6,10 @@ Implements the ``REASONABLE_POSSIBILITY`` test (ASC 944) and the
 qualifies for reinsurance accounting (vs. deposit accounting).
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..assumptions.sets import AssumptionSet
-from ..models.cash_flows import GrossCashFlows
+from ..engine.projection import Projection
 from ..models.reinsurance import ReinsuranceTreaty
 from ..models.scenarios import ScenarioPath
 
@@ -17,10 +17,12 @@ from ..models.scenarios import ScenarioPath
 class RiskTransferInput(BaseModel):
     """Inputs to the risk-transfer test."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     assumption_set: AssumptionSet
     treaty: ReinsuranceTreaty
     scenario_paths: list[ScenarioPath] = []
-    gross_cash_flows: GrossCashFlows | None = None
+    gross_projection: Projection | None = None
 
 
 class RiskTransferOutput(BaseModel):
