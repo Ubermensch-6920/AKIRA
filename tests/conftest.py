@@ -8,18 +8,19 @@ import pytest
 
 from actuarial_model.assumptions.enums import (
     CollateralType,
+    Framework,
     ReinsuranceTreatyType,
     ReinsurerAuthStatus,
     RiskTransferMethod,
 )
+from actuarial_model.assumptions.lapse import LapseRateTable
 from actuarial_model.assumptions.sets import (
     AssumptionSet,
     CreditorConfig,
     FixedCreditingConfig,
     WithdrawalAssumptions,
 )
-from actuarial_model.lapse import LapseRateTable
-from actuarial_model.withdrawal import (
+from actuarial_model.assumptions.withdrawal import (
     FreeWithdrawalConfig,
     PartialWithdrawalTable,
 )
@@ -61,11 +62,13 @@ def sample_assumption_set() -> AssumptionSet:
         created_date=date(2025, 1, 1),
     )
 
-    for framework_name in ["stat_carvm", "stat_vm22", "ldti", "fas157", "ebs", "bel"]:
-        framework = getattr(assumption_set, framework_name)
-        framework.lapse_config = default_lapse_config
-        framework.withdrawal = default_withdrawal_config
-        framework.creditor = default_creditor_config
+    for framework in Framework:
+        if framework is Framework.NAIC_RBC:
+            continue
+        config = assumption_set.framework_config(framework)
+        config.lapse_config = default_lapse_config
+        config.withdrawal = default_withdrawal_config
+        config.creditor = default_creditor_config
 
     return assumption_set
 

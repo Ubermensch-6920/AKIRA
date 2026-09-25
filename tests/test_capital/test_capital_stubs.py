@@ -1,9 +1,11 @@
-"""Smoke tests: capital frameworks raise NotImplementedError in Phase 1."""
+"""Smoke tests: capital stubs raise NotImplementedError in Phase 1."""
 
 import pytest
 
 from actuarial_model.assumptions.sets import AssumptionSet
-from actuarial_model.capital import ecr, rbc, stochastic
+from actuarial_model.bases.ebs import ecr
+from actuarial_model.bases.stat import rbc
+from actuarial_model.capital import stochastic
 
 
 def test_rbc_empty_run(sample_assumption_set: AssumptionSet) -> None:

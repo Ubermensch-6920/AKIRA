@@ -1,125 +1,99 @@
 """
-Apply reinsurance treaties to gross cash flows.
+Apply reinsurance treaties to a gross projection.
 
-Routes each policy → treaty pairing to the appropriate treaty-type
-engine (quota share in Phase 1; coinsurance / modco / FWH / YRT / XL in
-Phase 2) and produces ceded and net cash flow streams suitable for
-downstream framework reserving.
+Each policy names at most one treaty via ``reinsurance_treaty_id`` (carried
+on the projection frame from the seriatim record, or supplied explicitly).
+The treaty's ceded share becomes a per-policy column, and the whole
+portfolio is split in one vectorised pass — gross, ceded, and net stay on
+the same grid, so every basis discounts all three identically.
 
-Pairing rule (Phase 1): each policy names at most one treaty via
-``MygaPolicyState.reinsurance_treaty_id``. Policies with no treaty (or
-with ``inputs.policies`` not supplied at all) are simply retained: they
-appear in the net stream at gross and contribute nothing ceded.
+Output streams:
+  - ceded: reinsured policies only
+  - net:   every policy (retained share where reinsured, gross otherwise)
 """
 
-from pydantic import BaseModel
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+
+import polars as pl
 
 from ..assumptions.enums import ReinsuranceTreatyType
-from ..assumptions.sets import AssumptionSet
-from ..models.cash_flows import GrossCashFlows, PolicyCashFlows
-from ..models.policy import MygaPolicyState
+from ..engine.projection import Projection
 from ..models.reinsurance import ReinsuranceTreaty
 from . import quota_share
 
-METHODOLOGY_VERSION = "reinsurance_application_v0.1.0"
+METHODOLOGY_VERSION = "reinsurance_application_v1.0.0"
+
+_TREATY_COLUMN = "reinsurance_treaty_id"
+_SHARE_COLUMN = "_ceded_share"
 
 
-class ReinsuranceApplicationInput(BaseModel):
-    """Inputs to the reinsurance application step."""
+@dataclass(frozen=True)
+class ReinsuranceSplit:
+    """Ceded and net projections derived from one gross projection."""
 
-    assumption_set: AssumptionSet
-    treaties: list[ReinsuranceTreaty]
-    gross_cash_flows: GrossCashFlows | None = None
-    policies: list[MygaPolicyState] = []  # provides the policy → treaty pairing
-
-
-class ReinsuranceApplicationOutput(BaseModel):
-    """Output: ceded + net cash flow streams keyed by policy / treaty."""
-
-    ceded_cash_flows: GrossCashFlows | None = None
-    net_cash_flows: GrossCashFlows | None = None
+    ceded: Projection
+    net: Projection
 
 
-def calculate(inputs: ReinsuranceApplicationInput) -> ReinsuranceApplicationOutput:
-    """Apply each treaty to its associated policies' gross cash flows.
+def apply(
+    gross: Projection,
+    treaties: Sequence[ReinsuranceTreaty],
+    treaty_id_by_policy: Mapping[str, str | None] | None = None,
+) -> ReinsuranceSplit:
+    """Split ``gross`` into ceded and net streams per each policy's treaty.
 
-    Returns ceded and net streams over the same valuation date as the
-    gross input. The ceded stream carries one entry per reinsured policy;
-    the net stream carries every policy (retained where reinsured, gross
-    where not).
+    Args:
+        gross: Gross projection.
+        treaties: Treaty registry.
+        treaty_id_by_policy: Overrides / supplies the policy → treaty pairing
+            when the projection frame carries no ``reinsurance_treaty_id``.
 
     Raises:
-        ValueError: If ``gross_cash_flows`` is missing or a policy names
-            a treaty_id not present in ``inputs.treaties``.
+        ValueError: If a policy names a treaty not in ``treaties`` or a
+            treaty is malformed.
         NotImplementedError: If a paired treaty is a Phase 2 type
             (coinsurance / ModCo / FWH / YRT / XL).
     """
-    if inputs.gross_cash_flows is None:
-        raise ValueError(
-            "ReinsuranceApplicationInput.gross_cash_flows is required — "
-            "run the projection engine (core.seriatim) first."
+    frame = gross.frame
+    if treaty_id_by_policy is not None:
+        mapping = pl.DataFrame(
+            {
+                "policy_id": list(treaty_id_by_policy),
+                _TREATY_COLUMN: list(treaty_id_by_policy.values()),
+            },
+            schema={"policy_id": pl.String(), _TREATY_COLUMN: pl.String()},
         )
+        frame = frame.drop(_TREATY_COLUMN, strict=False).join(mapping, on="policy_id", how="left")
+    elif _TREATY_COLUMN not in frame.columns:
+        frame = frame.with_columns(pl.lit(None, dtype=pl.String()).alias(_TREATY_COLUMN))
 
-    gross = inputs.gross_cash_flows
-    treaty_by_id = {t.treaty_id: t for t in inputs.treaties}
-    treaty_id_by_policy = {
-        p.policy_id: p.reinsurance_treaty_id
-        for p in inputs.policies
-        if p.reinsurance_treaty_id is not None
-    }
-
-    ceded_policies: list[PolicyCashFlows] = []
-    net_policies: list[PolicyCashFlows] = []
-
-    for policy_cf in gross.policies:
-        treaty_id = treaty_id_by_policy.get(policy_cf.policy_id)
-        if treaty_id is None:
-            net_policies.append(policy_cf)  # unreinsured: net == gross
-            continue
-
+    treaty_by_id = {t.treaty_id: t for t in treaties}
+    shares: dict[str, float] = {}
+    for treaty_id in frame[_TREATY_COLUMN].drop_nulls().unique().to_list():
         treaty = treaty_by_id.get(treaty_id)
         if treaty is None:
+            offenders = frame.filter(pl.col(_TREATY_COLUMN) == treaty_id)["policy_id"].to_list()
             raise ValueError(
-                f"Policy {policy_cf.policy_id} references treaty "
-                f"{treaty_id!r}, which is not in the supplied treaty list."
+                f"Policy {offenders[0]} references treaty {treaty_id!r}, "
+                "which is not in the supplied treaty list."
             )
+        if treaty.treaty_type is not ReinsuranceTreatyType.QUOTA_SHARE:
+            raise NotImplementedError(
+                f"Treaty {treaty.treaty_id} is {treaty.treaty_type.value}; "
+                "Phase 1 supports QUOTA_SHARE only."
+            )
+        shares[treaty_id] = quota_share.validate_treaty(treaty)
 
-        ceded_cf, retained_cf = _apply_treaty(treaty, policy_cf, gross)
-        ceded_policies.append(ceded_cf)
-        net_policies.append(retained_cf)
-
-    return ReinsuranceApplicationOutput(
-        ceded_cash_flows=GrossCashFlows(
-            valuation_date=gross.valuation_date, policies=ceded_policies
-        ),
-        net_cash_flows=GrossCashFlows(
-            valuation_date=gross.valuation_date, policies=net_policies
-        ),
+    share_expr = (
+        pl.col(_TREATY_COLUMN).replace_strict(shares, default=0.0, return_dtype=pl.Float64())
+        if shares
+        else pl.lit(0.0)
     )
-
-
-def _apply_treaty(
-    treaty: ReinsuranceTreaty,
-    policy_cf: PolicyCashFlows,
-    gross: GrossCashFlows,
-) -> tuple[PolicyCashFlows, PolicyCashFlows]:
-    """Route one policy's cash flows through its treaty-type engine."""
-    if treaty.treaty_type is not ReinsuranceTreatyType.QUOTA_SHARE:
-        raise NotImplementedError(
-            f"Treaty {treaty.treaty_id} is {treaty.treaty_type.value}; "
-            "Phase 1 supports QUOTA_SHARE only."
-        )
-
-    qs_output = quota_share.calculate(
-        quota_share.QuotaShareInput(
-            treaty=treaty,
-            gross_cash_flows=GrossCashFlows(
-                valuation_date=gross.valuation_date, policies=[policy_cf]
-            ),
-        )
-    )
-    assert qs_output.ceded_cash_flows and qs_output.retained_cash_flows
-    return (
-        qs_output.ceded_cash_flows.policies[0],
-        qs_output.retained_cash_flows.policies[0],
-    )
+    frame = frame.with_columns(share_expr.alias(_SHARE_COLUMN))
+    ceded, net = quota_share.split(frame, pl.col(_SHARE_COLUMN))
+    ceded = ceded.filter(pl.col(_TREATY_COLUMN).is_not_null()).drop(_SHARE_COLUMN)
+    net = net.drop(_SHARE_COLUMN)
+    return ReinsuranceSplit(ceded=gross.with_frame(ceded), net=gross.with_frame(net))

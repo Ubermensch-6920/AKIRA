@@ -23,6 +23,21 @@ class ProductType(str, Enum):
     ULSG = "ULSG"  # Phase 3
 
 
+class Basis(str, Enum):
+    """Accounting / regulatory basis — the top-level demarcation of results.
+
+    Every framework belongs to exactly one basis (see :attr:`Framework.basis`),
+    and every basis projects cash flows on its own assumption block of the
+    :class:`~actuarial_model.assumptions.sets.AssumptionSet`. Results from
+    different bases are never summed together.
+    """
+
+    STAT = "STAT"  # US statutory (NAIC): CARVM, VM-22, RBC
+    US_GAAP = "US_GAAP"  # US GAAP outside ASC 944 LDTI: ASC 820 fair value
+    LDTI = "LDTI"  # US GAAP ASC 944 LDTI: LFPB + DAC
+    EBS = "EBS"  # Bermuda Economic Balance Sheet: BEL, technical provisions, ECR
+
+
 class Framework(str, Enum):
     """Reserving / valuation framework producing a result."""
 
@@ -33,6 +48,22 @@ class Framework(str, Enum):
     EBS = "EBS"
     BEL = "BEL"
     NAIC_RBC = "NAIC_RBC"  # capital framework — stamps CapitalResult records
+
+    @property
+    def basis(self) -> Basis:
+        """The accounting / regulatory basis this framework reports under."""
+        return _FRAMEWORK_BASIS[self]
+
+
+_FRAMEWORK_BASIS: dict[Framework, Basis] = {
+    Framework.STAT_CARVM: Basis.STAT,
+    Framework.STAT_VM22: Basis.STAT,
+    Framework.NAIC_RBC: Basis.STAT,
+    Framework.FAS157: Basis.US_GAAP,
+    Framework.LDTI: Basis.LDTI,
+    Framework.EBS: Basis.EBS,
+    Framework.BEL: Basis.EBS,  # risk-free best estimate; the EBS TP starting point
+}
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -234,10 +265,11 @@ class ProjectionTimestep(str, Enum):
 
 
 class CurveInterpolation(str, Enum):
-    """Yield curve interpolation method."""
+    """Yield curve interpolation method (maps onto gaspatchio ``Curve``)."""
 
-    LINEAR = "LINEAR"
-    CUBIC_SPLINE = "CUBIC_SPLINE"
+    LINEAR = "LINEAR"  # linear in zero-rate space
+    LOG_LINEAR = "LOG_LINEAR"  # linear in log discount factor (piecewise-flat forwards)
+    PCHIP = "PCHIP"  # monotone cubic in zero-rate space
 
 
 # ────────────────────────────────────────────────────────────────────────

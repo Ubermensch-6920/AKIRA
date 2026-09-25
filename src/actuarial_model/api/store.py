@@ -2,7 +2,10 @@
 DuckDB-backed persistence for valuation runs and their results.
 
 Runs and result records are stored as JSON payloads keyed by ``run_id``
-so the REST layer can return them without re-running the pipeline. The
+(result rows are tagged with their basis and framework) so the REST layer
+can return them without re-running the pipeline. Per-policy results are
+stored columnar in ``policy_results``, written straight from the polars
+frame the pipeline produces. The
 database location comes from the ``AKIRA_DB_PATH`` environment variable;
 it defaults to an in-process, in-memory database (hermetic for tests —
 set the env var to a file path for durable storage across restarts).
@@ -17,6 +20,7 @@ from functools import lru_cache
 from typing import Any
 
 import duckdb
+import polars as pl
 
 from ..models.runs import ValuationRun
 
@@ -29,10 +33,40 @@ CREATE TABLE IF NOT EXISTS results (
     run_id      TEXT NOT NULL,
     result_type TEXT NOT NULL,
     grain       TEXT NOT NULL,
+    basis       TEXT NOT NULL,
     framework   TEXT NOT NULL,
     payload     TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS policy_results (
+    run_id        TEXT NOT NULL,
+    basis         TEXT NOT NULL,
+    framework     TEXT NOT NULL,
+    component     TEXT NOT NULL,
+    supplementary BOOLEAN NOT NULL,
+    policy_id     TEXT NOT NULL,
+    legal_entity  TEXT NOT NULL,
+    segment       TEXT NOT NULL,
+    cohort_id     TEXT NOT NULL,
+    gross         DOUBLE NOT NULL,
+    ceded         DOUBLE NOT NULL,
+    net           DOUBLE NOT NULL
+);
 """
+
+_POLICY_RESULT_COLUMNS = (
+    "run_id",
+    "basis",
+    "framework",
+    "component",
+    "supplementary",
+    "policy_id",
+    "legal_entity",
+    "segment",
+    "cohort_id",
+    "gross",
+    "ceded",
+    "net",
+)
 
 
 class RunStore:
@@ -44,6 +78,10 @@ class RunStore:
         self._lock = threading.Lock()
         with self._lock:
             self._conn.execute(_SCHEMA)
+            # Databases created before the basis demarcation lack the column.
+            self._conn.execute(
+                "ALTER TABLE results ADD COLUMN IF NOT EXISTS basis TEXT DEFAULT ''"
+            )
 
     # ── Runs ─────────────────────────────────────────────────────────────
     def save_run(self, run: ValuationRun) -> None:
@@ -72,26 +110,65 @@ class RunStore:
         run_id: str,
         result_type: str,
         grain: str,
+        basis: str,
         framework: str,
         payload: dict[str, Any],
     ) -> None:
         with self._lock:
             self._conn.execute(
-                "INSERT INTO results VALUES (?, ?, ?, ?, ?)",
-                [run_id, result_type, grain, framework, json.dumps(payload, default=str)],
+                "INSERT INTO results (run_id, result_type, grain, basis, framework, payload) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [run_id, result_type, grain, basis, framework, json.dumps(payload, default=str)],
             )
+
+    def save_policy_results(self, run_id: str, frame: pl.DataFrame) -> None:
+        """Bulk-insert the pipeline's per-policy results for ``run_id``."""
+        if frame.height == 0:
+            return
+        rows = frame.with_columns(pl.lit(run_id).alias("run_id")).select(_POLICY_RESULT_COLUMNS)
+        with self._lock:
+            self._conn.register("_policy_rows", rows.to_arrow())
+            try:
+                self._conn.execute("INSERT INTO policy_results SELECT * FROM _policy_rows")
+            finally:
+                self._conn.unregister("_policy_rows")
+
+    def list_policy_results(
+        self,
+        run_id: str,
+        basis: str | None = None,
+        framework: str | None = None,
+        policy_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Per-policy result rows for one run, optionally filtered."""
+        clauses, params = ["run_id = ?"], [run_id]
+        for column, value in (("basis", basis), ("framework", framework), ("policy_id", policy_id)):
+            if value is not None:
+                clauses.append(f"{column} = ?")
+                params.append(value)
+        columns = ", ".join(_POLICY_RESULT_COLUMNS)
+        with self._lock:
+            cursor = self._conn.execute(
+                f"SELECT {columns} FROM policy_results WHERE {' AND '.join(clauses)} "
+                "ORDER BY basis, framework, component, policy_id",
+                params,
+            )
+            rows = cursor.fetchall()
+        return [dict(zip(_POLICY_RESULT_COLUMNS, row, strict=True)) for row in rows]
 
     def list_results(
         self,
         run_id: str | None = None,
         result_type: str | None = None,
         framework: str | None = None,
+        basis: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Result rows (payload plus type / grain tags), optionally filtered."""
+        """Result rows (payload plus type / grain / basis tags), optionally filtered."""
         clauses, params = [], []
         for column, value in (
             ("run_id", run_id),
             ("result_type", result_type),
+            ("basis", basis),
             ("framework", framework),
         ):
             if value is not None:
@@ -100,7 +177,7 @@ class RunStore:
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT run_id, result_type, grain, framework, payload "
+                "SELECT run_id, result_type, grain, basis, framework, payload "
                 f"FROM results{where}",
                 params,
             ).fetchall()
@@ -109,8 +186,9 @@ class RunStore:
                 "run_id": r[0],
                 "result_type": r[1],
                 "grain": r[2],
-                "framework": r[3],
-                "result": json.loads(r[4]),
+                "basis": r[3],
+                "framework": r[4],
+                "result": json.loads(r[5]),
             }
             for r in rows
         ]

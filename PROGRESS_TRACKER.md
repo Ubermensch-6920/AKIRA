@@ -1,110 +1,56 @@
 # AKIRA — Development Progress Tracker
 
-*Last updated: 2026-07-14*
+*Last updated: 2026-09-24*
 
 ---
 
 ## Module Status
 
-| Module | File(s) | Status | Tests | Notes |
-|--------|---------|--------|-------|-------|
-| **Mortality decrements** | `mortality/decrements.py` | ✅ Complete | 12 | SOA 2012 IAM + G2; single/joint life; monthly/quarterly/annual |
-| **Mortality runner** | `mortality/runner.py` | ✅ Complete | (via integration) | Orchestrates a single-policy projection |
-| **Lapse calculator** | `lapse/calculator.py` + `rates.py` | ✅ Complete | 14 | Rate tables, shock rates, annual→periodic conversion |
-| **Withdrawal calculator** | `withdrawal/calculator.py` + `rates.py` | ✅ Complete | 38 | Surrender charges, free withdrawal, MVA |
-| **Crediting calculator** | `crediting/calculator.py` | ✅ Complete | 16 | Fixed-rate; periodic conversion formula |
-| **Assumption config** | `assumptions/sets.py` + `enums.py` + `validators.py` | ✅ Complete | Smoke | Full config framework; 20+ enums; cross-field validators |
-| **Pydantic models** | `models/` (5 files) | ✅ Complete | Smoke | Policy, asset, reinsurance, results, cash flow structures |
-| **FastAPI runs/results** | `api/main.py` + `api/routes/` + `api/store.py` | ✅ Complete | 5 | POST /runs executes all six frameworks + RBC; GET /runs, /results query the DuckDB store; assumptions/data routers still stubs |
-| **MYGA projection** | `core/projections/myga.py` | ✅ Complete | 12 | Two-layer engine: decrements + AV roll-forward; ROAV/ROP, surrender charges, maturity |
-| **Seriatim dispatcher** | `core/seriatim.py` | ✅ Complete | 3 | Routes MYGA policies; Phase 2/3 products raise NotImplementedError |
-| **Aggregation** | `core/aggregation.py` | ✅ Complete | 5 | Cohort → segment → legal-entity rollup, framework-partitioned |
-| **Discount / yield curve** | `core/discount.py` | ✅ Complete | 17 | Linear/cubic-spline zero curve, flat extrapolation, DF helpers |
-| **Quota-share reinsurance** | `reinsurance/quota_share.py` | ✅ Complete | 6 | Proportional ceded/retained split of all monetary fields |
-| **Reinsurance application** | `reinsurance/application.py` | ✅ Complete | 4 | Routes policy-treaty pairs via `reinsurance_treaty_id`; Phase 2 types raise |
-| **Asset ledger** | `assets/ledger.py` | ✅ Complete | 4 | DuckDB-backed upsert + read-back of `AssetRecord` rows |
-| **Asset valuation** | `assets/valuation.py` | ✅ Complete | 6 | Carrying values per framework: STAT book (non-admitted → 0), LDTI HTM/AFS, FV market, EBS post-haircut |
-| **BEL** | `standards/bel.py` | ✅ Complete | 8 | Discounts liability outflows at risk-free curve; ceded stream wired → net = gross − ceded |
-| **STAT CARVM** | `standards/stat_carvm.py` | ✅ Complete | 13 | Greatest-PV of guaranteed benefits; CSV floor; closed-form tested |
-| **VM-22** | `standards/stat_vm22.py` | ✅ Complete | 9 | DR + SR (CTE over placeholder rate-shock scenario set); DR-only / max(DR, SR) |
-| **LDTI** | `standards/ldti.py` | ✅ Complete | 9 | LFPB (single-premium NPR mechanics) + straight-line DAC; EGP basis raises |
-| **FAS 157** | `standards/fas157.py` | ✅ Complete | 7 | Base PV per discount basis + CoC risk margin + own-credit adjustment |
-| **EBS** | `standards/ebs.py` | ✅ Complete | 7 | TP = BEL @ risk-free + illiquidity premium + CoC risk margin; BMA haircut on ceded |
-| **NAIC RBC** | `capital/rbc.py` | ✅ Complete | 7 | Factor-based C-1…C-4, covariance, ACL; ratio when TAC supplied |
-| **Bermuda ECR** | `capital/ecr.py` | 🔴 Stub | — | Enhanced Capital Requirement |
-| **Stochastic capital** | `capital/stochastic.py` | 🔴 Stub | — | Scenario-driven stochastic capital |
-| **Coinsurance** | `reinsurance/coinsurance.py` | 🔴 Phase 2 | — | |
-| **ModCo** | `reinsurance/modco.py` | 🔴 Phase 2 | — | |
-| **Funds Withheld** | `reinsurance/funds_withheld.py` | 🔴 Phase 2 | — | |
-| **YRT** | `reinsurance/yrt.py` | 🔴 Phase 2 | — | |
-| **Excess of Loss** | `reinsurance/excess_of_loss.py` | 🔴 Phase 2 | — | |
-| **FIA projection** | `core/projections/fia.py` | 🔴 Phase 2 | — | |
-| **SPIA projection** | `core/projections/spia.py` | 🔴 Phase 2 | — | |
-| **VA projection** | `core/projections/va.py` | 🔴 Phase 3 | — | |
-| **ULSG projection** | `core/projections/ulsg.py` | 🔴 Phase 3 | — | |
-| **Frontend** | `frontend/src/` | 🔴 Stub | — | No components yet; scaffold (Vite + Tailwind + Recharts) only |
+| Basis / layer | Module | File(s) | Status | Notes |
+|---------------|--------|---------|--------|-------|
+| Engine | **MYGA projection (gaspatchio)** | `engine/projections/myga.py` | ✅ Complete | Vectorised ActuarialFrame model; reconciled to scalar reference at 1e-12; AV roll-forward balances |
+| Engine | Grid / curves / tables / model points | `engine/grid.py`, `curves.py`, `tables.py`, `model_points.py` | ✅ Complete | Valuation-date monthly grid; gaspatchio `Curve`; content-addressed `Table`s |
+| Engine | Projection carrier | `engine/projection.py` | ✅ Complete | One row per policy, `list[f64]` per cash-flow line |
+| Engine | Seriatim dispatcher | `engine/seriatim.py` | ✅ Complete | MYGA routed; Phase 2/3 products raise |
+| Engine | Aggregation | `engine/aggregation.py` | ✅ Complete | Per-policy → cohort / segment / legal entity, keyed by (basis, framework) |
+| Orchestration | Pipeline + valuation context | `pipeline.py`, `bases/context.py` | ✅ Complete | One gaspatchio run per distinct assumption block |
+| Assumptions | Basis-demarcated `AssumptionSet` | `assumptions/sets.py`, `enums.py` | ✅ Complete | `stat` · `us_gaap` · `ldti` · `ebs`; per-block mortality levers |
+| Assumptions | Rate tables | `assumptions/mortality.py`, `lapse.py`, `withdrawal.py` | ✅ Complete | SOA 2012 IAM + G2, lapse shocks, Athene surrender schedules |
+| Reinsurance | Quota share + application | `reinsurance/quota_share.py`, `application.py` | ✅ Complete | Vectorised per-policy treaty share |
+| **STAT** | CARVM | `bases/stat/carvm.py` | ✅ Complete | Greatest-PV of guaranteed benefits as a gaspatchio frame |
+| **STAT** | VM-22 | `bases/stat/vm22.py` | ✅ Complete | DR + CTE SR (placeholder scenario set) |
+| **STAT** | NAIC RBC | `bases/stat/rbc.py` | ✅ Complete | Factor-based; STAT reserves only |
+| **US GAAP** | ASC 820 fair value | `bases/us_gaap/fair_value.py` | ✅ Complete | Base PV + CoC RM + own-credit |
+| **LDTI** | LFPB | `bases/ldti/lfpb.py` | ✅ Complete | Single-premium NPR mechanics |
+| **LDTI** | DAC | `bases/ldti/dac.py` | ✅ Complete | Straight-line; supplementary (asset) |
+| **EBS** | BEL | `bases/ebs/bel.py` | ✅ Complete | Risk-free |
+| **EBS** | Technical provisions | `bases/ebs/technical_provisions.py` | ✅ Complete | BEL @ rf+IP + CoC RM; BMA haircut on ceded |
+| **EBS** | Bermuda ECR | `bases/ebs/ecr.py` | 🔴 Stub | Phase 3 |
+| Cross-basis | Stochastic capital | `capital/stochastic.py` | 🔴 Stub | Phase 3 |
+| Assets | Ledger + valuation views | `assets/` | ✅ Complete | Carrying value by basis |
+| API | Runs / results / policy results | `api/` | ✅ Complete | Basis-grouped responses, `?basis=` filter, `/results/{run_id}/policies` |
+| Reinsurance | Coinsurance / ModCo / FWH / YRT / XL | `reinsurance/*.py` | 🔴 Phase 2 | |
+| Engine | FIA / SPIA / VA / ULSG | `engine/projections/*.py` | 🔴 Phase 2/3 | |
+| Frontend | | `frontend/src/` | 🔴 Stub | Scaffold only |
 
-**Legend:** ✅ Implemented & tested &nbsp;|&nbsp; 🟡 Skeleton (calculation stub) &nbsp;|&nbsp; 🔴 Not started / stub only
+**Legend:** ✅ Implemented & tested &nbsp;|&nbsp; 🔴 Not started / stub only
 
 ---
 
 ## Test Coverage Summary
 
-| Module | Test File | Count | Coverage |
-|--------|-----------|-------|----------|
-| Withdrawal | `test_withdrawal/test_withdrawal_rates.py` | 38 | Surrender schedules, free/partial withdrawal, MVA, integration |
-| Crediting | `test_crediting/test_crediting.py` | 16 | FixedCreditingConfig, CreditorConfig, annual→periodic |
-| Lapse | `test_lapse/test_lapse_rates.py` | 14 | LapseRateTable, repository, calculator, shock rates |
-| Mortality | `test_mortality/test_decrements.py` | 12 | Single/joint life, lapse/withdrawal/crediting integration |
-| Models | `test_models/` | Smoke | Schema validation only |
-| Assumptions | `test_assumptions/` | Smoke | Schema validation only |
-| API | `test_api_smoke.py` + `test_api_runs.py` | 6 | Health check + POST /runs pipeline, /results retrieval |
-| Aggregation | `test_core/test_aggregation.py` | 5 | Grain rollups, framework partitioning |
-| VM-22 | `test_standards/test_stat_vm22.py` | 9 | DR hand-calc, CTE tail, component selection, ceded |
-| Quota share | `test_reinsurance/test_quota_share.py` | 6 | Split conservation, validation |
-| Reinsurance application | `test_reinsurance/test_application.py` | 4 | Routing, retained fallback, Phase 2 guard |
-| NAIC RBC | `test_capital/test_rbc.py` | 7 | Closed-form ACL, reserve-base preference, ratio |
-| LDTI | `test_standards/test_ldti.py` | 9 | LFPB hand-calc, NPR cap, DAC schedule, EGP guard |
-| FAS 157 | `test_standards/test_fas157.py` | 7 | Discount-basis ordering, own-credit, RM hand-calc |
-| EBS | `test_standards/test_ebs.py` | 7 | Illiquidity premium, haircut on ceded, SBA guard |
-| Assets | `test_assets/test_assets.py` | 10 | Ledger round-trip/upsert, per-framework carrying values |
-| Remaining stubs | `test_core/` etc. | Stub | `NotImplementedError` guards (ECR, stochastic capital, Phase 2 reinsurance/products) |
-| **Total** | | **236** | |
-
----
-
-## Critical Path to First End-to-End MYGA Run
-
-```
-[Decrements — DONE]
-  Mortality ✅  Lapse ✅  Withdrawal ✅  Crediting ✅
-          │
-          ▼
-  MYGA Projection Engine  ◄── BLOCKER (core/projections/myga.py)
-          │
-          ├──► Discount / Yield Curve  (core/discount.py)
-          │
-          ▼
-  Seriatim Dispatcher  (core/seriatim.py)
-          │
-          ├──► Quota-Share Reinsurance  (reinsurance/quota_share.py)
-          │
-          ▼
-  Best Estimate Liability  (standards/bel.py)
-          │
-          ├──► STAT CARVM  (standards/stat_carvm.py)
-          ├──► VM-22  (standards/stat_vm22.py)
-          └──► [LDTI / FAS 157 / EBS — later]
-                    │
-                    ▼
-             Aggregation  (core/aggregation.py)
-                    │
-                    ▼
-              NAIC RBC  (capital/rbc.py)
-                    │
-                    ▼
-               API Routes  (api/routes/)
-```
+| Area | Test File | Coverage |
+|------|-----------|----------|
+| MYGA engine | `test_engine/test_myga_projection.py` | Scalar-reference reconciliation, AV balance, crediting, lapse timing, maturity, ROP, charges, basis levers |
+| Curves / grid / tables | `test_engine/test_curves.py`, `test_tables_and_grid.py` | Interpolation, extrapolation, shifts/floors, content-addressed tables |
+| Seriatim / aggregation | `test_engine/test_seriatim.py`, `test_aggregation.py` | Routing, grains, no framework mixing |
+| Reinsurance | `test_reinsurance/test_reinsurance.py` | Split conservation, pairing, validation, Phase 2 guards |
+| STAT | `test_bases/test_stat_carvm.py`, `test_stat_rbc.py` | CARVM closed forms; RBC hand calc, STAT-only base |
+| VM-22 / FAS 157 / LDTI / BEL / EBS | `test_bases/test_best_estimate_bases.py` | Hand calculations, ceded, haircut, NPR, DAC, CTE |
+| Demarcation | `test_bases/test_demarcation.py` | Basis stamping, per-block projection, cache, RBC isolation, aggregation |
+| Assumptions / models / assets | `test_assumptions/`, `test_models/`, `test_assets/` | Config validation, rate tables, carrying values |
+| API | `test_api_smoke.py`, `test_api_runs.py` | Pipeline over REST, basis grouping/filter, policy results |
+| **Total** | | **184** |
 
 ---
 
@@ -177,9 +123,27 @@ All six Phase 1 reserve frameworks are now live end-to-end.
 
 ---
 
+### ✅ Done (2026-09-24) — gaspatchio rewire & basis demarcation
+
+- Projection engine rebuilt on gaspatchio (`engine/`): vectorised MYGA
+  ActuarialFrame model replacing the per-policy / per-period loop engines
+  (mortality, lapse, withdrawal, crediting calculators removed). Reconciled
+  to a scalar reference at 1e-12. ~100x faster: 10k policies × all four
+  bases in ~5s, vs ~60ms per policy for the old projection alone.
+- Results demarcated into **STAT · US GAAP · LDTI · EBS** (`bases/`): basis
+  stamped on every result, per-basis assumption blocks, per-basis
+  aggregation, RBC restricted to STAT reserves.
+- Methodology fixes (see ARCHITECTURE.md §4): valuation-date projection
+  start, monthly crediting formula, lapse policy-year indexing, withdrawal
+  timing (AV roll-forward now balances exactly).
+- Per-policy results persisted (`policy_results`) and exposed over REST.
+- Python 3.12 (gaspatchio requirement); pandas / scipy dropped.
+
+---
+
 ### Priority 1 — Phase 2 kickoff (after MYGA validation)
 
-**1. Product engines: `core/projections/fia.py`, `core/projections/spia.py`**
+**1. Product engines: `engine/projections/fia.py`, `engine/projections/spia.py` (gaspatchio models)**
 
 **2. Phase 2 reinsurance: coinsurance, ModCo, funds withheld, YRT, XL**
 
@@ -192,15 +156,14 @@ into the RBC step.
 ### Known Phase 1 simplifications (revisit before production)
 
 - MVA is hard-zero in the MYGA engine (no interest-rate path yet).
-- Projection basis is pinned to `stat_carvm` config; per-framework bases pending.
-- Surrender schedules resolve from the embedded Athene repository; unknown IDs default to no charges.
-- Decrement engine's `withdrawal_decrement` / `crediting_accrual` paths are bypassed by the MYGA engine (withdrawal modeled in AV layer; counts unaffected) — consider cleaning up the engine itself.
-- VM-22 SR re-discounts the fixed best-estimate cash flows per rate scenario; cash flows are not re-projected per path (dynamic lapse / MVA interaction deferred until an interest-rate path reaches the MYGA engine).
-- Quota share does not model ceding commission / expense allowance cash flows (no premium or expense fields on the MYGA record yet) and ignores treaty effective / termination windows.
-- CARVM ceded reserve stays 0 — statutory reinsurance reserve credit (authorization / collateral rules) not yet applied.
-- RBC factors are approximations of the NAIC Life tables (pre-tax); C-4 is reserve-proxied because premium income isn't carried in the model.
-- FAS 157 / EBS risk margins use a cost-of-capital proxy (capital-ratio × liability duration) rather than a projected capital runoff; discount-basis spreads, own-credit spread, and the illiquidity premium are placeholder constants.
-- LDTI NPR is computed from the valuation-date projection, not locked at issue; cohort granularity is not applied (one cohort per run); DAC needs real per-policy acquisition expenses.
+- Surrender schedules resolve from the embedded Athene repository; unknown IDs mean no charges.
+- Joint-life decrements were removed with the loop engine. Re-implement in gaspatchio for SPIA / PRT.
+- VM-22 SR re-discounts the fixed cash flows per rate scenario; cash flows are not re-projected per path.
+- Quota share does not model ceding commission / expense allowance cash flows and ignores treaty effective / termination windows.
+- CARVM ceded reserve stays 0 — statutory reinsurance reserve credit not yet applied.
+- RBC factors are approximations of the NAIC Life tables (pre-tax); C-4 is reserve-proxied.
+- FAS 157 / EBS risk margins use a cost-of-capital proxy (capital-ratio × duration); spreads and the illiquidity premium are placeholder constants. Policy-level values are pro-rata allocations.
+- LDTI NPR is computed from the valuation-date projection, not locked at issue; cohort granularity is not applied; DAC needs real per-policy acquisition expenses.
 - Asset valuation views return carrying values only — no amortization roll-forward or impairment logic.
 
 ---
@@ -218,7 +181,7 @@ into the RBC step.
 ### Phase 3 Backlog
 
 - VA and ULSG projection engines
-- `capital/ecr.py` — Bermuda ECR
+- `bases/ebs/ecr.py` — Bermuda ECR
 - `capital/stochastic.py` — Stochastic capital
 
 ---
@@ -227,6 +190,6 @@ into the RBC step.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| **Phase 1** | MYGA + Quota Share; all 6 reserve frameworks; NAIC RBC | ✅ Complete — all 6 frameworks + QS + RBC + REST live (placeholder assumptions flagged `ASSUMPTION REQUIRED` throughout) |
+| **Phase 1** | MYGA + Quota Share; STAT / US GAAP / LDTI / EBS; NAIC RBC | ✅ Complete — gaspatchio engine, four demarcated bases, QS, RBC, REST (placeholder assumptions flagged `ASSUMPTION REQUIRED`) |
 | **Phase 2** | PRT, SPIA, FIA; Coinsurance, ModCo, FWH, YRT, XL | 🔴 Not started |
 | **Phase 3** | VA, ULSG; Bermuda ECR; stochastic capital | 🔴 Not started |

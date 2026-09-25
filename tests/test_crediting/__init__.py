@@ -1,1 +1,0 @@
-"""Interest crediting module tests."""

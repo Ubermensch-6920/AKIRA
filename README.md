@@ -5,11 +5,11 @@ architecture extensible to PRT/SPIA, FIA, VA, and ULSG.
 
 ## Status
 
-**Phase 1 scaffolding only.** This commit ships project structure, Pydantic
-data models, module stubs with typed signatures, a tests harness, and the
-tooling baseline. **No calculation logic is implemented yet** — every
-`calculate(...)` entry point raises `NotImplementedError`. Product specs and
-seriatim field definitions arrive in the next prompt.
+**Phase 1 complete, rewired onto [gaspatchio](https://gaspatchio.dev/latest/).**
+MYGA cash flows are projected by a vectorised gaspatchio `ActuarialFrame`
+model: one row per policy, one list element per month, no per-policy loops.
+Results are demarcated into four bases: **STAT**, **US GAAP**, **LDTI** and
+**EBS**. Placeholder assumptions are flagged `ASSUMPTION REQUIRED` throughout.
 
 ## Phase 1 Scope
 
@@ -24,74 +24,55 @@ seriatim field definitions arrive in the next prompt.
 | 2     | PRT, SPIA, FIA         | Coinsurance, ModCo, Funds Withheld, YRT, Excess of Loss |
 | 3     | VA, ULSG               | —                                                       |
 
-## Frameworks Covered
+## Bases & Frameworks
 
-- **STAT** — Pre-VM-22 CARVM (`STAT_CARVM`) and VM-22 (`STAT_VM22`, DR + SR)
-- **GAAP** — ASC 944 LDTI (`LDTI`, LFPB + DAC) and ASC 820 fair value (`FAS157`)
-- **Bermuda** — Economic Balance Sheet (`EBS`)
-- **Cross-cutting** — Best Estimate Liability (`BEL`)
-- **Capital** — NAIC RBC, Bermuda ECR, stochastic capital
+| Basis       | Measures                                                   | Assumption block         |
+|-------------|------------------------------------------------------------|--------------------------|
+| **STAT**    | CARVM (Pre-VM-22), VM-22 (DR + SR), NAIC RBC               | `assumption_set.stat`    |
+| **US GAAP** | ASC 820 fair value (FAS 157)                               | `assumption_set.us_gaap` |
+| **LDTI**    | ASC 944 LFPB, DAC                                          | `assumption_set.ldti`    |
+| **EBS**     | BEL (risk-free), technical provisions + risk margin, ECR*  | `assumption_set.ebs`     |
+
+\* ECR / BSCR is a Phase 3 stub. Stochastic capital (`capital/stochastic.py`) is cross-basis.
+
+Every result carries `metadata.basis`. Each basis projects on its own
+assumption block, and results from different bases are never summed.
 
 ## Architecture (data flow)
 
 ```
-            ┌────────────────┐
-            │   Seriatim     │  PolicyState records (per product)
-            │   inputs       │  AssetRecord ledger
-            │                │  ReinsuranceTreaty registry
-            └───────┬────────┘
-                    │
-                    ▼
-            ┌────────────────┐
-            │  Projection    │  core/projections/<product>.py
-            │  engine        │  → gross cash flows, in-force, decrements
-            └───────┬────────┘
-                    │
-                    ▼
-            ┌────────────────┐
-            │  Reinsurance   │  reinsurance/application.py
-            │  application   │  gross → ceded → net cash flows
-            └───────┬────────┘
-                    │
-                    ▼
-            ┌────────────────┐
-            │  BEL           │  standards/bel.py
-            │  (cross-cut)   │  best-estimate liability discounting
-            └───────┬────────┘
-                    │
-                    ▼
-            ┌─────────────────────────────────────────────────────┐
-            │  Framework reserves                                 │
-            │  STAT_CARVM · STAT_VM22 · LDTI · FAS157 · EBS       │
-            └───────┬─────────────────────────────────────────────┘
-                    │
-                    ▼
-            ┌────────────────┐         ┌────────────────┐
-            │  Aggregation   │  ───►   │  Capital       │
-            │  cohort →      │         │  RBC · ECR ·   │
-            │  segment → BS  │         │  stochastic    │
-            └───────┬────────┘         └───────┬────────┘
-                    │                          │
-                    └──────────┬───────────────┘
-                               ▼
-                       ┌────────────────┐
-                       │  Output records │  ReserveResult / CapitalResult
-                       │  (DuckDB)       │  every record stamped with
-                       │                 │  run_id + assumption_set_id
-                       └────────────────┘
+ seriatim policies ──► gaspatchio projection (per basis assumption block, cached)
+                              │
+                              ▼
+                     reinsurance split (gross / ceded / net)
+                              │
+      ┌───────────────┬───────┴───────┬──────────────────┐
+      ▼               ▼               ▼                  ▼
+    STAT           US GAAP          LDTI               EBS
+  CARVM · VM-22   ASC 820 FV      LFPB · DAC       BEL · TP (+RM)
+  → NAIC RBC
+      │               │               │                  │
+      └───────────────┴───────┬───────┴──────────────────┘
+                              ▼
+          aggregation per (basis, framework): cohort → segment → legal entity
+                              ▼
+          DuckDB: runs · results (basis-tagged) · policy_results
 ```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the module map, the gaspatchio
+model, and the methodology changes made in the rewire.
 
 ## Quick Start
 
 ### Backend
 
 ```bash
-# Python 3.11 environment
+# Python 3.12 environment (gaspatchio requires >= 3.12)
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Run the test harness (smoke tests only — calculations raise NotImplementedError)
+# Run the test suite
 pytest
 
 # Run the API locally
@@ -118,95 +99,42 @@ mypy src/
 ## Directory Map
 
 ```
-.
-├── pyproject.toml
-├── README.md
-├── .gitignore
-├── .python-version
-├── requirements.txt
-├── requirements-dev.txt
-│
-├── src/actuarial_model/
-│   ├── models/              # Pydantic data models (no logic)
-│   │   ├── policy.py
-│   │   ├── asset.py
-│   │   ├── reinsurance.py
-│   │   ├── results.py
-│   │   └── runs.py
-│   ├── assumptions/         # Optionality / config
-│   │   ├── enums.py
-│   │   ├── sets.py
-│   │   └── validators.py
-│   ├── core/                # Core projection engine
-│   │   ├── seriatim.py      # Dispatcher: routes to product engine
-│   │   ├── aggregation.py   # Cohort → Segment → BS rollup
-│   │   ├── discount.py      # Yield curve + DF utilities
-│   │   └── projections/     # Product-specific projection modules
-│   │       ├── myga.py      # Phase 1
-│   │       ├── fia.py       # Phase 2 stub
-│   │       ├── spia.py      # Phase 2 stub
-│   │       ├── va.py        # Phase 3 stub
-│   │       └── ulsg.py      # Phase 3 stub
-│   ├── standards/           # Reserve framework modules
-│   │   ├── bel.py
-│   │   ├── stat_carvm.py
-│   │   ├── stat_vm22.py
-│   │   ├── ldti.py
-│   │   ├── fas157.py
-│   │   └── ebs.py
-│   ├── capital/             # Capital frameworks
-│   │   ├── rbc.py
-│   │   ├── ecr.py
-│   │   └── stochastic.py
-│   ├── reinsurance/         # Reinsurance treatment
-│   │   ├── application.py
-│   │   ├── quota_share.py   # Phase 1 implementation
-│   │   ├── coinsurance.py   # Phase 2 stub
-│   │   ├── modco.py         # Phase 2 stub
-│   │   ├── funds_withheld.py
-│   │   ├── yrt.py
-│   │   ├── excess_of_loss.py
-│   │   └── risk_transfer.py
-│   ├── assets/              # Asset ledger + valuation views
-│   │   ├── ledger.py
-│   │   └── valuation.py
-│   ├── api/                 # FastAPI layer
-│   │   ├── main.py
-│   │   ├── routes/{runs,results,assumptions,data}.py
-│   │   └── schemas/
-│   └── utils/
-│       ├── logging_config.py
-│       └── ids.py
-│
-├── frontend/                # React + Tailwind + shadcn (scaffold only)
-│   ├── package.json
-│   ├── tailwind.config.js
-│   ├── vite.config.js
-│   └── src/{App.jsx,main.jsx,components/}
-│
-├── data/
-│   ├── inputs/schema.md     # Seriatim + asset field definitions
-│   └── outputs/
-│
-└── tests/
-    ├── conftest.py
-    ├── test_models/
-    ├── test_assumptions/
-    ├── test_core/
-    ├── test_standards/
-    ├── test_reinsurance/
-    └── test_capital/
+src/actuarial_model/
+├── pipeline.py      # run_valuation(): project → reinsure → bases → aggregate
+├── assumptions/     # enums (Basis, Framework), basis-demarcated AssumptionSet, rate tables
+├── engine/          # gaspatchio engine: grid, curves, tables, model points,
+│   │                #   Projection carrier, seriatim dispatch, aggregation
+│   └── projections/ # myga.py (Phase 1); fia / spia / va / ulsg stubs
+├── reinsurance/     # frame-based quota share + application; Phase 2 stubs
+├── bases/           # ← demarcation
+│   ├── stat/        #   carvm.py · vm22.py · rbc.py
+│   ├── us_gaap/     #   fair_value.py (ASC 820)
+│   ├── ldti/        #   lfpb.py · dac.py
+│   └── ebs/         #   bel.py · technical_provisions.py · ecr.py (stub)
+├── capital/         # stochastic.py (cross-basis stub)
+├── assets/          # DuckDB ledger + per-basis carrying values
+├── models/          # Pydantic records (policy, asset, treaty, results, runs)
+└── api/             # FastAPI: /runs, /results, /results/{run_id}/policies
+tests/               # engine · reinsurance · bases (incl. demarcation) · assumptions · API
+frontend/            # React + Tailwind scaffold
+data/                # input schema docs, outputs
 ```
 
 ## Conventions
 
 - All public data structures are Pydantic v2 `BaseModel`s. No bare dicts
   cross module boundaries.
-- Every calculation module exposes `calculate(inputs: ModelInput) -> ModelOutput`.
+- Every basis measure exposes `calculate(...) -> MeasureResult` (run-level
+  `ReserveResult` + per-policy detail); each basis package exposes `run(ctx, frameworks)`.
 - All result records carry `valuation_date`, `framework`,
   `methodology_version`, `run_id`, and `assumption_set_id`.
 - `# ASSUMPTION REQUIRED: ...` markers flag inputs awaiting product-spec
   finalization.
-- Calculations are vectorized (numpy / pandas); cash flow arrays use numpy
-  arrays with explicit `pd.DatetimeIndex` labels.
+- Projections are gaspatchio `ActuarialFrame` models. Cash flows travel as a
+  polars frame (one row per policy, `list[f64]` per cash-flow line) on a
+  shared monthly grid anchored at the valuation date.
+- Every result is stamped with its basis (STAT / US_GAAP / LDTI / EBS);
+  results from different bases are never summed.
+- gaspatchio `Table`s are content-addressed (`engine/tables.py`); never
+  register tables by a fixed name.
 - Logging via `logging` (configured in `utils/logging_config.py`), never `print`.

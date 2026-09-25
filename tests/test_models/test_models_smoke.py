@@ -9,7 +9,7 @@ from actuarial_model.models.reinsurance import ReinsuranceTreaty
 def test_assumption_set_instantiates(sample_assumption_set) -> None:
     assert sample_assumption_set.assumption_set_id == "as-test-0001"
     # Defaults populated for every framework block.
-    assert sample_assumption_set.bel.expense_inflation_rate == 0.03
+    assert sample_assumption_set.ebs.bel.expense_inflation_rate == 0.03
 
 
 def test_myga_policy_discriminator(sample_policy: MygaPolicyState) -> None:

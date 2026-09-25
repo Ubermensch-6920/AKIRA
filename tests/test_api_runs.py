@@ -82,6 +82,28 @@ def test_run_completes_with_all_phase1_frameworks(completed_run: dict):
     aggregation = completed_run["aggregation"]
     # One row per framework; DAC / risk margin stay out of the rollup.
     assert len(aggregation["by_legal_entity"]) == 6
+    # Default (identical) assumption blocks → one gaspatchio projection.
+    assert completed_run["projection_runs"] == 1
+
+
+def test_results_are_demarcated_by_basis(completed_run: dict):
+    bases = completed_run["bases"]
+    assert set(bases) == {"STAT", "US_GAAP", "LDTI", "EBS"}
+    frameworks = {
+        basis: sorted(r["metadata"]["framework"] for r in summary["reserve_results"])
+        for basis, summary in bases.items()
+    }
+    assert frameworks == {
+        "STAT": ["STAT_CARVM", "STAT_VM22"],
+        "US_GAAP": ["FAS157"],
+        "LDTI": ["LDTI", "LDTI"],  # LFPB + DAC
+        "EBS": ["BEL", "EBS", "EBS"],  # BEL + TP + risk margin
+    }
+    assert [c["metadata"]["framework"] for c in bases["STAT"]["capital_results"]] == ["NAIC_RBC"]
+    for basis in ("US_GAAP", "LDTI", "EBS"):
+        assert bases[basis]["capital_results"] == []
+    for basis, summary in bases.items():
+        assert all(r["metadata"]["basis"] == basis for r in summary["reserve_results"])
 
 
 def test_run_is_listed_and_fetchable(completed_run: dict):
@@ -110,6 +132,31 @@ def test_results_persisted_and_filterable(completed_run: dict):
     assert bel_rows[0]["result"]["gross_reserve"] > 0
 
     assert client.get("/results/run-does-not-exist").status_code == 404
+
+    ebs_rows = client.get(
+        "/results/", params={"run_id": run_id, "basis": "EBS", "result_type": "RESERVE"}
+    ).json()
+    assert {row["framework"] for row in ebs_rows} == {"BEL", "EBS"}
+    assert all(row["basis"] == "EBS" for row in ebs_rows)
+    assert client.get("/results/", params={"basis": "NOT_A_BASIS"}).status_code == 422
+
+
+def test_policy_results_persisted(completed_run: dict):
+    run_id = completed_run["run"]["run_id"]
+    rows = client.get(f"/results/{run_id}/policies").json()
+    # 1 policy x 8 measures (6 primary + DAC + risk margin)
+    assert len(rows) == 8
+    assert {row["basis"] for row in rows} == {"STAT", "US_GAAP", "LDTI", "EBS"}
+
+    stat_rows = client.get(f"/results/{run_id}/policies", params={"basis": "STAT"}).json()
+    assert {row["framework"] for row in stat_rows} == {"STAT_CARVM", "STAT_VM22"}
+    carvm = next(row for row in stat_rows if row["framework"] == "STAT_CARVM")
+    run_carvm = next(
+        r for r in completed_run["reserve_results"] if r["metadata"]["framework"] == "STAT_CARVM"
+    )
+    assert carvm["gross"] == pytest.approx(run_carvm["gross_reserve"])
+
+    assert client.get("/results/run-does-not-exist/policies").status_code == 404
 
 
 def test_run_with_reinsurance_cedes_half_of_bel():
