@@ -6,7 +6,7 @@ split is verifiable.
 **Legend:** ✍️ hand-written by me · 🤝 written by me, reviewed with AI ·
 🤖 AI-generated, reviewed by me
 
-## Hand-built engine (`engine/handbuilt/`)
+## Hand-built engine (`handbuilt/akira_handbuilt/`)
 
 | Component | File / function | Author | Date | Commit | Notes |
 |-----------|-----------------|--------|------|--------|-------|
@@ -19,7 +19,7 @@ split is verifiable.
 | Step 7 — cash flows | `myga.cash_flows` | | | | |
 | Wiring | `myga.project` | 🤖 | 2026-10-02 | | Calls steps 1-7 in order |
 | Data plumbing | `inputs.py` | 🤖 | 2026-10-02 | | Model points → arrays, table lookups, frame assembly |
-| Tests (spec) | `tests/test_handbuilt/` | 🤖 | 2026-10-02 | | Hand-calculated expectations, reviewed by me |
+| Tests (spec) | `handbuilt/test_hb/` | 🤖 | 2026-10-02 | | Hand-calculated expectations, reviewed by me |
 
 ## Everything else (as of 2026-10-02)
 

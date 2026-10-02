@@ -15,13 +15,18 @@ from datetime import date
 import numpy as np
 import polars as pl
 
-from ...assumptions.mortality import MortalityAssumptionRepository
-from ...assumptions.sets import MortalityConfig
-from ...assumptions.withdrawal import SurrenderChargeRepository
-from ...models.policy import MygaPolicyState
-from ..grid import DAYS_PER_YEAR, ProjectionGrid
-from ..model_points import myga_model_points
-from ..projection import CASH_FLOW_COLUMNS, COUNT_COLUMNS, LABEL_COLUMNS, Projection
+from actuarial_model.assumptions.mortality import MortalityAssumptionRepository
+from actuarial_model.assumptions.sets import MortalityConfig
+from actuarial_model.assumptions.withdrawal import SurrenderChargeRepository
+from actuarial_model.engine.grid import DAYS_PER_YEAR, ProjectionGrid
+from actuarial_model.engine.model_points import myga_model_points
+from actuarial_model.engine.projection import (
+    CASH_FLOW_COLUMNS,
+    COUNT_COLUMNS,
+    LABEL_COLUMNS,
+    Projection,
+)
+from actuarial_model.models.policy import MygaPolicyState
 
 MAX_AGE = 130
 

@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
-from actuarial_model.assumptions.sets import MortalityConfig
-from actuarial_model.engine.handbuilt import myga as hb
-from actuarial_model.engine.projection import CASH_FLOW_COLUMNS, COUNT_COLUMNS
-from actuarial_model.engine.projections import myga as benchmark
 from tests.factories import VAL_DATE
 from tests.test_engine.test_myga_projection import _config, _portfolio
+
+from actuarial_model.assumptions.sets import MortalityConfig
+from actuarial_model.engine.projection import CASH_FLOW_COLUMNS, COUNT_COLUMNS
+from actuarial_model.engine.projections import myga as benchmark
+from akira_handbuilt import myga as hb
 
 # ── Step 1 — Time ────────────────────────────────────────────────────────────
 
@@ -165,9 +165,3 @@ def test_reconciles_to_gaspatchio(projections):
             err_msg=column,
         )
 
-
-def test_seriatim_routes_to_handbuilt_engine():
-    from actuarial_model.engine import seriatim
-
-    projection = seriatim.project(_portfolio()[:1], _config(), VAL_DATE, engine="handbuilt")
-    assert projection.methodology_version == hb.METHODOLOGY_VERSION

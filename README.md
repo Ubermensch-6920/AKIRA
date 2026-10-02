@@ -13,11 +13,12 @@ Results are demarcated into four bases: **STAT**, **US GAAP**, **LDTI** and
 
 ## Hand-built engine (in progress)
 
-I'm rewriting the projection core by hand in NumPy (`engine/handbuilt/`),
+I'm rewriting the projection core by hand in NumPy, in a separate
+[`handbuilt/`](handbuilt/) workspace,
 test-first, with the gaspatchio engine kept as the benchmark it must
 reconcile to. Who wrote what is logged in
-[docs/handbuilt/AUTHORSHIP.md](docs/handbuilt/AUTHORSHIP.md); session plans
-live in [docs/handbuilt/](docs/handbuilt/).
+[handbuilt/AUTHORSHIP.md](handbuilt/AUTHORSHIP.md); session plans live
+alongside it.
 
 ## Phase 1 Scope
 

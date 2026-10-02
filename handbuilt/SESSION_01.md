@@ -4,13 +4,13 @@
 until each step's test passes. Next session finishes the cash flows (step 7)
 and reconciles the whole engine to the gaspatchio benchmark.
 
-**Your file:** `src/actuarial_model/engine/handbuilt/myga.py`
-**Your tests:** `tests/test_handbuilt/test_myga_handbuilt.py`
+**Your file:** `handbuilt/akira_handbuilt/myga.py`
+**Your tests:** `handbuilt/test_hb/test_myga_handbuilt.py`
 
 ```bash
 source .venv/bin/activate          # or: python3.12 -m venv .venv && pip install -e ".[dev]"
-pytest tests/test_handbuilt -rs    # SKIPPED "TODO ..." = not built yet; PASSED = done
-pytest tests/test_handbuilt -k step3 -rs   # run one step's tests
+pytest handbuilt -rs               # SKIPPED "TODO ..." = not built yet; PASSED = done
+pytest handbuilt -k step3 -rs      # run one step's tests
 ```
 
 ## Rules for yourself
@@ -83,14 +83,14 @@ trick as step 5.
 
 ## Done when
 
-- `pytest tests/test_handbuilt -rs` shows steps 1-6 PASSED. Step 7, the
-  reconciliation and routing tests still show TODO.
+- `pytest handbuilt -rs` shows steps 1-6 PASSED. Step 7 and the
+  reconciliation test still show TODO.
 - `pytest` (the whole suite) is still green.
 - There are six commits, one per step, and `AUTHORSHIP.md` is updated.
 
 ## Next session
 
 Step 7 `cash_flows`: the formulas are in its docstring. Then
-`test_reconciles_to_gaspatchio` should pass. When it does, flip
-`DEFAULT_ENGINE` in `engine/seriatim.py` to `"handbuilt"` and run the full
-suite. Every basis (STAT, US GAAP, LDTI, EBS) then runs on your engine.
+`test_reconciles_to_gaspatchio` should pass. When it does, move the engine
+into `src/actuarial_model/engine/` and point `engine/seriatim.py` at it. Every
+basis (STAT, US GAAP, LDTI, EBS) then runs on your engine.

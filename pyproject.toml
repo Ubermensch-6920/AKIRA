@@ -42,15 +42,15 @@ where = ["src"]
 # ── pytest ───────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["tests"]
+testpaths = ["tests", "handbuilt"]
 addopts = "-ra --strict-markers"
-pythonpath = ["src"]
+pythonpath = ["src", "handbuilt", "."]
 
 # ── ruff ─────────────────────────────────────────────────────────────────
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests"]
+src = ["src", "tests", "handbuilt"]
 extend-exclude = ["frontend", "data"]
 
 [tool.ruff.lint]
@@ -73,6 +73,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "F403"]
 "tests/**" = ["N802", "N803"]
+"handbuilt/test_hb/**" = ["N802", "N803"]
 
 # ── mypy ─────────────────────────────────────────────────────────────────
 [tool.mypy]

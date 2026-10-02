@@ -14,7 +14,7 @@ Conventions (same as the gaspatchio benchmark, see ARCHITECTURE.md §3):
   - Survivors then take partial withdrawals; at the guarantee end date the
     survivors mature on the post-withdrawal account value.
 
-Run your tests:  pytest tests/test_handbuilt -rs
+Run your tests:  pytest handbuilt -rs
 (an unbuilt function shows as SKIPPED "TODO", a built one as PASSED)
 """
 
@@ -25,10 +25,11 @@ from datetime import date
 
 import numpy as np
 
-from ...assumptions.sets import MortalityConfig, ProjectionBasisConfig
-from ...models.policy import MygaPolicyState
-from ..grid import ProjectionGrid
-from ..projection import Projection
+from actuarial_model.assumptions.sets import MortalityConfig, ProjectionBasisConfig
+from actuarial_model.engine.grid import ProjectionGrid
+from actuarial_model.engine.projection import Projection
+from actuarial_model.models.policy import MygaPolicyState
+
 from . import inputs
 
 METHODOLOGY_VERSION = "myga_handbuilt_v0.1.0"
