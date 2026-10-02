@@ -10,12 +10,19 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date
+from typing import Literal
 
 from ..assumptions.enums import ProductType
 from ..assumptions.sets import ProjectionBasisConfig
 from ..models.policy import MygaPolicyState, PolicyStateBase
+from .handbuilt import myga as handbuilt_myga
 from .projection import Projection
 from .projections import myga
+
+Engine = Literal["gaspatchio", "handbuilt"]
+
+# Flip to "handbuilt" once tests/test_handbuilt reconciles to the benchmark.
+DEFAULT_ENGINE: Engine = "gaspatchio"
 
 
 def project(
@@ -25,6 +32,7 @@ def project(
     *,
     projection_horizon_years: int = 30,
     detail: bool = False,
+    engine: Engine | None = None,
 ) -> Projection:
     """Project every policy on ``config`` from ``valuation_date``.
 
@@ -41,6 +49,10 @@ def project(
             "Phase 1 supports MYGA only."
         )
     myga_policies = [p for p in policies if isinstance(p, MygaPolicyState)]
+    if (engine or DEFAULT_ENGINE) == "handbuilt":
+        return handbuilt_myga.project(
+            myga_policies, config, valuation_date, projection_horizon_years=projection_horizon_years
+        )
     return myga.project(
         myga_policies,
         config,

@@ -11,6 +11,14 @@ model: one row per policy, one list element per month, no per-policy loops.
 Results are demarcated into four bases: **STAT**, **US GAAP**, **LDTI** and
 **EBS**. Placeholder assumptions are flagged `ASSUMPTION REQUIRED` throughout.
 
+## Hand-built engine (in progress)
+
+I'm rewriting the projection core by hand in NumPy (`engine/handbuilt/`),
+test-first, with the gaspatchio engine kept as the benchmark it must
+reconcile to. Who wrote what is logged in
+[docs/handbuilt/AUTHORSHIP.md](docs/handbuilt/AUTHORSHIP.md); session plans
+live in [docs/handbuilt/](docs/handbuilt/).
+
 ## Phase 1 Scope
 
 - **Products:** MYGA
